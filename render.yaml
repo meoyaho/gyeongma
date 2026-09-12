@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: run-your-name
+    runtime: docker
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: OPENAI_API_KEY
+        sync: false
