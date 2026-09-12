@@ -24,7 +24,7 @@ let inviteCode = new URL(location.href).searchParams.get('room')?.toUpperCase();
 const serverOrigin = (import.meta.env.VITE_SERVER_ORIGIN || location.origin).replace(/\/$/, '');
 const apiUrl = path => `${serverOrigin}${path}`;
 const websocketUrl = `${serverOrigin.replace(/^http/, 'ws')}/ws`;
-let room = null, myId = null, ws = null, activeName = '', mode = 'solo', inputMode = 'voice', micReady = false, voiceBusy = false, view = 'home', localCalls = 0, keyboardCallLocked = false, sound = false, audioContext, lastHoof = 0;
+let room = null, myId = null, ws = null, activeName = '', mode = 'solo', inputMode = 'voice', micReady = false, voiceBusy = false, view = 'home', localCalls = 0, keyboardCallLocked = false, keyboardComposing = false, sound = false, audioContext, lastHoof = 0;
 let timeOffset = 0, lastSuggestion = '', lastLobbySignature = '', confirmedName = '';
 let nameValidationRevision = 0, nameValidationController = null, reservationToken = null;
 
@@ -350,7 +350,7 @@ function startView() {
   $('race-mode-label').textContent = mode === 'friends' ? '친구 경주' : inputMode === 'keyboard' ? '키보드 체험' : '혼자 경주';
   $('input-status').innerHTML = `${icon(inputMode === 'keyboard' ? 'keyboard' : 'mic')} ${inputMode === 'keyboard' ? '이름을 따라 써주세요' : '이름을 불러주세요'}`;
   const keyboardInput = $('keyboard-name-input');
-  keyboardInput.value = ''; keyboardInput.maxLength = activeName.length; keyboardInput.disabled = room.phase !== 'racing'; keyboardInput.placeholder = room.phase === 'racing' ? activeName : '출발 대기'; keyboardCallLocked = false;
+  keyboardInput.value = ''; keyboardInput.maxLength = activeName.length; keyboardInput.disabled = room.phase !== 'racing'; keyboardInput.placeholder = room.phase === 'racing' ? activeName : '출발 대기'; keyboardCallLocked = false; keyboardComposing = false;
   show('keyboard-name-input', inputMode === 'keyboard'); show('reconnect-mic', false);
   if (inputMode === 'keyboard') requestAnimationFrame(() => keyboardInput.focus());
   $('transcript').textContent = '';
@@ -410,11 +410,12 @@ function updateKeyboardName() {
   while (matched < typed.length && typed[matched] === activeName[matched]) matched++;
   paintNameProgress(matched);
   input.classList.toggle('has-error', typed.length > matched);
-  if (typed !== activeName || room?.phase !== 'racing' || $('result-dialog').open) return;
+  if (keyboardComposing || typed !== activeName || room?.phase !== 'racing' || $('result-dialog').open) return;
   keyboardCallLocked = true;
   paintNameProgress(0, true);
   send({ type: 'call', count: 1 });
   input.classList.add('is-complete');
+  input.blur();
   setTimeout(() => {
     input.value = '';
     input.classList.remove('is-complete', 'has-error');
@@ -423,6 +424,11 @@ function updateKeyboardName() {
   }, 180);
 }
 $('keyboard-name-input').addEventListener('input', updateKeyboardName);
+$('keyboard-name-input').addEventListener('compositionstart', () => { keyboardComposing = true; });
+$('keyboard-name-input').addEventListener('compositionend', () => {
+  keyboardComposing = false;
+  queueMicrotask(updateKeyboardName);
+});
 document.addEventListener('keydown', () => {
   if (view === 'race' && inputMode === 'keyboard' && !$('result-dialog').open) $('keyboard-name-input').focus();
 });
