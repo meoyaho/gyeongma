@@ -24,7 +24,7 @@ let inviteCode = new URL(location.href).searchParams.get('room')?.toUpperCase();
 const serverOrigin = (import.meta.env.VITE_SERVER_ORIGIN || location.origin).replace(/\/$/, '');
 const apiUrl = path => `${serverOrigin}${path}`;
 const websocketUrl = `${serverOrigin.replace(/^http/, 'ws')}/ws`;
-let room = null, myId = null, ws = null, activeName = '', mode = 'solo', inputMode = 'voice', micReady = false, voiceBusy = false, view = 'home', localCalls = 0, lastTap = 0, sound = false, audioContext, lastHoof = 0;
+let room = null, myId = null, ws = null, activeName = '', mode = 'solo', inputMode = 'voice', micReady = false, voiceBusy = false, view = 'home', localCalls = 0, keyboardCallLocked = false, sound = false, audioContext, lastHoof = 0;
 let timeOffset = 0, lastSuggestion = '', lastLobbySignature = '', confirmedName = '';
 let nameValidationRevision = 0, nameValidationController = null, reservationToken = null;
 
@@ -62,7 +62,7 @@ document.querySelector('#app').innerHTML = `
     <div class="race-hud"><div class="rank-box"><span class="tiny-label">현재 순위</span><div><b id="race-rank">1</b><span id="race-field"> / 8</span></div></div><div class="progress-box"><div><span id="race-horse-name"></span><b id="race-distance">0 / 300m</b></div><div class="race-progress-track"><i id="race-progress"></i></div><small id="race-time">00.00</small></div></div>
     <div id="leaderboard" class="leaderboard"></div>
     <div id="countdown" class="countdown hidden"><strong id="countdown-number">3</strong></div>
-    <div class="race-controls"><div class="speed-readout"><b id="speed-value">18</b><span>km/h</span><small id="speed-label">기본 속도</small></div><div class="shout-panel"><div class="shout-label"><span id="input-status">${icon('mic')} 이름을 불러주세요</span><span id="call-count">0회 인식</span></div><strong id="shout-name"></strong><div id="voice-bars" class="voice-bars">${Array.from({ length: 25 }, (_, i) => `<i style="--i:${i}"></i>`).join('')}</div><p id="transcript"></p><button id="tap-button" class="button primary hidden">${icon('keyboard')} 탭 또는 스페이스로 응원</button><button id="reconnect-mic" class="button secondary hidden">마이크 다시 연결</button></div><div class="boost-readout"><span>가속</span><div class="boost-track"><i id="boost-fill"></i></div><b id="boost-value">0%</b></div></div>
+    <div class="race-controls"><div class="speed-readout"><b id="speed-value">18</b><span>km/h</span><small id="speed-label">기본 속도</small></div><div class="shout-panel"><div class="shout-label"><span id="input-status">${icon('mic')} 이름을 불러주세요</span><span id="call-count">0회 인식</span></div><strong id="shout-name"></strong><div id="voice-bars" class="voice-bars">${Array.from({ length: 25 }, (_, i) => `<i style="--i:${i}"></i>`).join('')}</div><p id="transcript"></p><input id="keyboard-name-input" class="keyboard-name-input hidden" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="경주마 이름 따라 쓰기"/><button id="reconnect-mic" class="button secondary hidden">마이크 다시 연결</button></div><div class="boost-readout"><span>가속</span><div class="boost-track"><i id="boost-fill"></i></div><b id="boost-value">0%</b></div></div>
   </section>
   <dialog id="lobby-dialog" class="modal" aria-labelledby="lobby-title"><h2 id="lobby-title">마이크 설정</h2><p id="lobby-description"></p><div id="invite-area" class="hidden"><label for="invite-link">초대 링크</label><div class="invite-link-row"><input id="invite-link" readonly/><button id="copy-link" class="button secondary">${icon('link')} 복사</button></div></div><div id="lobby-players" class="lobby-players"></div><div class="mic-test"><div><span class="mic-test-icon">${icon('mic')}</span><div><b id="mic-title">마이크를 연결해주세요</b><p id="mic-description"></p></div></div><div class="mic-meter"><i id="mic-meter-fill"></i></div><p id="mic-transcript" aria-live="polite"></p></div><p class="privacy-note">음성은 브라우저 인식 서비스에서 처리될 수 있습니다.</p><div id="lobby-error" class="inline-error hidden" role="alert"></div><button id="connect-mic" class="button primary full-width">${icon('mic')} 마이크 연결하기</button><button id="start-race" class="button primary full-width hidden">${icon('flag')} 경주 시작하기 ${icon('arrow')}</button><button id="practice-button" class="practice-button">키보드로 체험 ${icon('arrow')}</button><p id="lobby-wait" class="lobby-wait"></p></dialog>
   <dialog id="result-dialog" class="modal result-modal"><div class="result-icon">${icon('trophy')}</div><h2 id="result-title">경주 결과</h2><p id="result-description"></p><div class="result-stats"><div><span>완주 기록</span><b id="result-time"></b></div><div><span>인식 횟수</span><b id="result-calls"></b></div></div><div id="result-board"></div><p id="result-wait" class="lobby-wait"></p><button id="replay" class="button primary full-width">다시 경주 ${icon('arrow')}</button><button id="result-home" class="button secondary full-width">처음으로</button></dialog>
@@ -293,7 +293,16 @@ function receive(data) {
     if (view !== 'race') startView();
     scene.update(room);
     updateRace();
-    if (previousPhase !== 'racing' && room.phase === 'racing') { voice.resetRecognition(); clearNameProgress(); $('countdown-number').textContent = '달려!'; setTimeout(() => show('countdown', false), 650); }
+    if (previousPhase !== 'racing' && room.phase === 'racing') {
+      voice.resetRecognition(); clearNameProgress();
+      if (inputMode === 'keyboard') {
+        $('keyboard-name-input').value = '';
+        $('keyboard-name-input').disabled = false;
+        $('keyboard-name-input').placeholder = activeName;
+        $('keyboard-name-input').focus();
+      }
+      $('countdown-number').textContent = '달려!'; setTimeout(() => show('countdown', false), 650);
+    }
   }
 }
 function renderLobby() {
@@ -327,7 +336,7 @@ async function prepareVoice() {
   finally { voiceBusy = false; $('connect-mic').disabled = false; $('connect-mic').innerHTML = `${icon('mic')} 마이크 연결하기`; $('reconnect-mic').disabled = false; }
 }
 $('connect-mic').onclick = prepareVoice; $('reconnect-mic').onclick = prepareVoice;
-$('practice-button').onclick = () => { voice.stop(); inputMode = 'keyboard'; micReady = false; lobbyError(); $('mic-title').textContent = '키보드 체험 모드'; $('mic-description').textContent = '스페이스 또는 화면 버튼을 반복해서 눌러주세요.'; $('mic-transcript').textContent = ''; send({ type: 'ready', ready: true }); };
+$('practice-button').onclick = () => { voice.stop(); inputMode = 'keyboard'; micReady = false; lobbyError(); $('mic-title').textContent = '키보드 체험 모드'; $('mic-description').textContent = `“${activeName}”을 정확히 입력할 때마다 빨라집니다.`; $('mic-transcript').textContent = ''; send({ type: 'ready', ready: true }); };
 $('start-race').onclick = () => { send({ type: 'start' }); lobbyError(); };
 $('copy-link').onclick = async () => { try { await navigator.clipboard.writeText($('invite-link').value); $('copy-link').textContent = '복사 완료 ✓'; setTimeout(() => { $('copy-link').innerHTML = `${icon('link')} 복사`; }, 2000); } catch { $('invite-link').select(); toast('링크를 선택했어요. 복사해서 친구에게 보내주세요.'); } };
 function startView() {
@@ -339,8 +348,11 @@ function startView() {
   scene.setMode('race', room.players, myId); scene.update(room);
   $('race-horse-name').textContent = activeName; $('shout-name').innerHTML = [...activeName].map(char => `<span class="name-syllable" aria-hidden="true">${escape(char)}</span>`).join(''); $('shout-name').setAttribute('aria-label', activeName);
   $('race-mode-label').textContent = mode === 'friends' ? '친구 경주' : inputMode === 'keyboard' ? '키보드 체험' : '혼자 경주';
-  $('input-status').innerHTML = `${icon(inputMode === 'keyboard' ? 'keyboard' : 'mic')} ${inputMode === 'keyboard' ? '스페이스 또는 버튼을 눌러주세요' : '이름을 불러주세요'}`;
-  show('tap-button', inputMode === 'keyboard'); show('reconnect-mic', false);
+  $('input-status').innerHTML = `${icon(inputMode === 'keyboard' ? 'keyboard' : 'mic')} ${inputMode === 'keyboard' ? '이름을 따라 써주세요' : '이름을 불러주세요'}`;
+  const keyboardInput = $('keyboard-name-input');
+  keyboardInput.value = ''; keyboardInput.maxLength = activeName.length; keyboardInput.disabled = room.phase !== 'racing'; keyboardInput.placeholder = room.phase === 'racing' ? activeName : '출발 대기'; keyboardCallLocked = false;
+  show('keyboard-name-input', inputMode === 'keyboard'); show('reconnect-mic', false);
+  if (inputMode === 'keyboard') requestAnimationFrame(() => keyboardInput.focus());
   $('transcript').textContent = '';
   show('countdown'); $('countdown-number').textContent = '3';
 }
@@ -355,7 +367,7 @@ function updateRace() {
   const boost = Math.round((me.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED) * 100);
   $('boost-fill').style.width = `${boost}%`; $('boost-value').textContent = `${boost}%`;
   $('speed-label').textContent = boost >= 100 ? '최고 속도' : boost > 0 ? '가속 중' : '기본 속도';
-  $('call-count').textContent = `${me.totalCalls}회 ${inputMode === 'keyboard' ? '응원' : '인식'}`;
+  $('call-count').textContent = `${me.totalCalls}회 ${inputMode === 'keyboard' ? '입력' : '인식'}`;
   $('leaderboard').innerHTML = sorted.slice(0, 8).map((p, i) => `<div class="leader-row ${p.id === myId ? 'me' : ''}"><b>${i + 1}</b><span>${escape(p.name)}</span><small>${!p.connected && !p.finishTime ? '연결 끊김' : p.finishTime ? `${p.finishTime.toFixed(2)}s` : p.bot ? 'AI' : p.id === myId ? '나' : ''}</small></div>`).join('');
   if (me.finishTime !== null) {
     if (!$('result-dialog').open) { voice.stop(); micReady = false; $('result-dialog').showModal(); }
@@ -390,9 +402,30 @@ $('leave-race').onclick = leaveRoom; $('result-home').onclick = leaveRoom;
 $('lobby-dialog').addEventListener('cancel', e => { e.preventDefault(); leaveRoom(); });
 $('result-dialog').addEventListener('cancel', e => e.preventDefault());
 $('replay').onclick = () => { voice.stop(); send({ type: 'rematch' }); };
-function tap() { if (inputMode !== 'keyboard' || room?.phase !== 'racing' || $('result-dialog').open || performance.now() - lastTap < 110) return; lastTap = performance.now(); send({ type: 'call', count: 1 }); $('tap-button').classList.remove('tapped'); requestAnimationFrame(() => $('tap-button').classList.add('tapped')); }
-$('tap-button').onclick = tap;
-document.addEventListener('keydown', e => { if (e.code === 'Space' && view === 'race' && !$('result-dialog').open && inputMode === 'keyboard') { e.preventDefault(); if (!e.repeat) tap(); } });
+function updateKeyboardName() {
+  if (inputMode !== 'keyboard' || keyboardCallLocked) return;
+  const input = $('keyboard-name-input');
+  const typed = input.value;
+  let matched = 0;
+  while (matched < typed.length && typed[matched] === activeName[matched]) matched++;
+  paintNameProgress(matched);
+  input.classList.toggle('has-error', typed.length > matched);
+  if (typed !== activeName || room?.phase !== 'racing' || $('result-dialog').open) return;
+  keyboardCallLocked = true;
+  paintNameProgress(0, true);
+  send({ type: 'call', count: 1 });
+  input.classList.add('is-complete');
+  setTimeout(() => {
+    input.value = '';
+    input.classList.remove('is-complete', 'has-error');
+    keyboardCallLocked = false;
+    if (view === 'race' && inputMode === 'keyboard' && !$('result-dialog').open) input.focus();
+  }, 180);
+}
+$('keyboard-name-input').addEventListener('input', updateKeyboardName);
+document.addEventListener('keydown', () => {
+  if (view === 'race' && inputMode === 'keyboard' && !$('result-dialog').open) $('keyboard-name-input').focus();
+});
 $('sound-button').onclick = async () => {
   sound = !sound;
   if (sound) { audioContext ||= new (window.AudioContext || window.webkitAudioContext)(); await audioContext.resume(); }
