@@ -13,7 +13,25 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const app = express();
 const rooms = new Map();
 const roomWrites = new Map();
+const frontendOrigins = new Set((process.env.FRONTEND_ORIGINS || 'https://meoyaho.github.io').split(',').map(origin => origin.trim()).filter(Boolean));
+function originAllowed(origin, host) {
+  if (!origin) return true;
+  try { return new URL(origin).host === host || frontendOrigins.has(new URL(origin).origin); }
+  catch { return false; }
+}
 app.disable('x-powered-by');
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !originAllowed(origin, req.headers.host)) return res.sendStatus(403);
+  if (origin && frontendOrigins.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 app.use(express.json({ limit: '2kb' }));
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 const nameRequests = new Map();
@@ -110,8 +128,7 @@ function leave(ws) {
 wss.on('connection', (ws, req) => {
   // Browsers may only connect from this host; allow non-browser test clients.
   if (req.headers.origin) {
-    try { if (new URL(req.headers.origin).host !== req.headers.host) return ws.close(1008, 'Origin not allowed'); }
-    catch { return ws.close(1008); }
+    if (!originAllowed(req.headers.origin, req.headers.host)) return ws.close(1008, 'Origin not allowed');
   }
   ws.alive = true;
   ws.on('pong', () => { ws.alive = true; });

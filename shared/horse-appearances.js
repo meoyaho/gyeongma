@@ -12,5 +12,6 @@ export const horseAppearances = [
 ];
 export function horseAppearance(lane = 0) {
   const appearance = horseAppearances[Number.isInteger(lane) && lane >= 0 && lane < 8 ? lane : 0];
-  return { ...appearance, src: `/horses/${appearance.id}.png` };
+  const base = import.meta.env?.BASE_URL || '/';
+  return { ...appearance, src: `${base}horses/${appearance.id}.png` };
 }

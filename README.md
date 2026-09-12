@@ -53,6 +53,8 @@ Chrome에서 한국어 음성 인식을 확인하도록 구성했습니다. 브�
 
 외부 친구에게 보내려면 **HTTPS 공개 배포**가 필요합니다. localhost 링크는 현재 컴퓨터에서만 열립니다. 마이크는 보안 컨텍스트(HTTPS 또는 localhost)에서 동작합니다. WebSocket을 지원하는 Node/Docker 호스팅에 배포하세요. `Dockerfile`, `render.yaml`을 제공합니다. 배포된 주소에서 생성한 초대 링크는 자동으로 공개 주소를 사용합니다.
 
+GitHub Pages를 화면 주소로 유지하면서 서버를 분리할 때는 현재 Docker 이미지를 Cloud Run에 배포합니다. Cloud Run 주소를 GitHub 저장소의 Actions 변수 `VITE_SERVER_ORIGIN`에 저장하면 Pages 빌드가 이름 확인 API와 WebSocket을 그 서버에 연결합니다. 서버의 `FRONTEND_ORIGINS`에는 `https://meoyaho.github.io`를 설정합니다. 현재 경주 상태가 단일 프로세스 메모리에 있으므로 Cloud Run 최대 인스턴스는 1개로 제한해야 합니다.
+
 ## 검증
 
 개발 서버를 실행한 상태에서:

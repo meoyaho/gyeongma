@@ -21,8 +21,11 @@ const icons = {
 const icon = name => `<svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
 const escape = text => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let inviteCode = new URL(location.href).searchParams.get('room')?.toUpperCase();
+const serverOrigin = (import.meta.env.VITE_SERVER_ORIGIN || location.origin).replace(/\/$/, '');
+const apiUrl = path => `${serverOrigin}${path}`;
+const websocketUrl = `${serverOrigin.replace(/^http/, 'ws')}/ws`;
 let room = null, myId = null, ws = null, activeName = '', mode = 'solo', inputMode = 'voice', micReady = false, voiceBusy = false, view = 'home', localCalls = 0, lastTap = 0, sound = false, audioContext, lastHoof = 0;
-let timeOffset = 0, suggestionIndex = 0, lastLobbySignature = '', confirmedName = '';
+let timeOffset = 0, lastSuggestion = '', lastLobbySignature = '', confirmedName = '';
 let nameValidationRevision = 0, nameValidationController = null, reservationToken = null;
 
 document.querySelector('#app').innerHTML = `
@@ -32,7 +35,7 @@ document.querySelector('#app').innerHTML = `
       <div class="hero-grid">
         <section class="paddock ${inviteCode ? 'awaiting-horse' : ''}" aria-label="내 말 미리보기">
           <div class="horse-figure">
-            <img id="horse-portrait" src="/horses/chestnut.png" alt="왼쪽을 바라보는 밤색 말" draggable="false"/>
+            <img id="horse-portrait" src="${horseAppearance(0).src}" alt="왼쪽을 바라보는 밤색 말" draggable="false"/>
             <span id="horse-number" class="horse-number" aria-label="1번 말">1</span>
             <strong id="preview-name" class="preview-name">내 이름은 ???</strong>
           </div>
@@ -106,7 +109,7 @@ async function confirmName() {
     $('name-feedback').setAttribute('role', 'status');
     $('name-feedback').textContent = '이름을 확인하고 있습니다.';
     try {
-      const response = await fetch('/api/validate-name', {
+      const response = await fetch(apiUrl('/api/validate-name'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, roomCode: inviteCode, reservationToken }), signal: controller.signal,
       });
@@ -144,7 +147,13 @@ async function confirmName() {
 }
 $('confirm-name').onclick = confirmName;
 $('horse-name').addEventListener('input', () => updateName());
-$('shuffle').onclick = () => { setName(suggestions[suggestionIndex++ % suggestions.length]); };
+$('shuffle').onclick = () => {
+  const current = $('horse-name').value;
+  const pool = suggestions.filter(name => name !== current && name !== lastSuggestion);
+  const random = crypto.getRandomValues(new Uint32Array(1))[0];
+  lastSuggestion = pool[random % pool.length];
+  setName(lastSuggestion);
+};
 $('solo-button').onclick = () => openRoom('solo');
 $('friends-button').onclick = () => openRoom('friends', inviteCode);
 $('horse-name').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); confirmName(); } });
@@ -199,7 +208,7 @@ function setPortrait(lane = 0) {
 async function connect() {
   if (ws?.readyState === WebSocket.OPEN) return;
   await new Promise((resolve, reject) => {
-    const socket = ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`);
+    const socket = ws = new WebSocket(websocketUrl);
     const timeout = setTimeout(() => { socket.close(); reject(new Error('서버에 연결하지 못했어요. 다시 시도해주세요.')); }, 8000);
     socket.onopen = () => { clearTimeout(timeout); resolve(); };
     socket.onerror = () => { clearTimeout(timeout); reject(new Error('경주 서버에 연결하지 못했어요. 서버 실행 상태를 확인해주세요.')); };
