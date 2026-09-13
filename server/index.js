@@ -8,13 +8,12 @@ import { resolve, dirname } from 'node:path';
 import { RACE_DISTANCE, MIN_SPEED, speedForCalls } from '../shared/rules.js';
 import { checkName } from './name-check.js';
 import { saveRoom, deleteRoom } from './room-store.js';
+import { getRankedAiHorseNames } from './kra-rankings.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const app = express();
 const rooms = new Map();
 const roomWrites = new Map();
-// 한국마사회 서울경마 1년 전적 다승순 상위 7두 (2026-09-07 기준).
-const rankedAiHorseNames = ['로쉬', '라온사일런스', '서클에이', '로열삭스', '글로벌챔프', '라온플로렌스', '제너럴윈드'];
 const frontendOrigins = new Set((process.env.FRONTEND_ORIGINS || 'https://meoyaho.github.io').split(',').map(origin => origin.trim()).filter(Boolean));
 function originAllowed(origin, host) {
   if (!origin) return true;
@@ -213,7 +212,10 @@ wss.on('connection', (ws, req) => {
         room.players.push(p);
         if (!room.host) room.host = p.id;
         ws.roomCode = room.code; ws.playerId = p.id;
-        if (room.mode === 'solo') for (let i = 1; i < 8; i++) room.players.push({ ...player(null, rankedAiHorseNames[i - 1], i), id: `bot-${i}`, ready: true, bot: true });
+        if (room.mode === 'solo') {
+          const rankedAiHorseNames = await getRankedAiHorseNames();
+          for (let i = 1; i < 8; i++) room.players.push({ ...player(null, rankedAiHorseNames[i - 1], i), id: `bot-${i}`, ready: true, bot: true });
+        }
         if (room.mode === 'friends') {
           try { await persist(room); }
           catch {
