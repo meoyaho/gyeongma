@@ -77,9 +77,10 @@ function nextLane(room) {
   while (used.has(lane) && lane < 8) lane++;
   return lane;
 }
-function nextAppearance(room) {
+function nextAppearance(room, preferred) {
   const used = new Set(room.players.map(player => player.appearance));
   const available = Array.from({ length: 8 }, (_, index) => index).filter(index => !used.has(index));
+  if (Number.isInteger(preferred) && available.includes(preferred)) return preferred;
   return available[randomBytes(1)[0] % available.length];
 }
 function inviteSummary(room) {
@@ -213,7 +214,7 @@ wss.on('connection', (ws, req) => {
           if (problem) return fail(problem.message);
         }
         const lane = nextLane(room);
-        const p = player(ws, msg.name, lane, nextAppearance(room));
+        const p = player(ws, msg.name, lane, nextAppearance(room, msg.type === 'create' ? msg.appearance : undefined));
         room.players.push(p);
         if (!room.host) room.host = p.id;
         ws.roomCode = room.code; ws.playerId = p.id;

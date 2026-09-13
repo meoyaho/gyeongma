@@ -56,7 +56,7 @@ function syncMusic(retry = false) {
 let timeOffset = 0, lastSuggestion = '', lastLobbySignature = '', confirmedName = '';
 let nameValidationRevision = 0, nameValidationController = null, reservationToken = null;
 const randomAppearance = () => crypto.getRandomValues(new Uint32Array(1))[0] % 8;
-const initialAppearance = randomAppearance();
+let currentAppearance = randomAppearance();
 
 document.querySelector('#app').innerHTML = `
   <div id="home-view">
@@ -65,7 +65,7 @@ document.querySelector('#app').innerHTML = `
       <div class="hero-grid">
         <section class="paddock ${inviteCode ? 'awaiting-horse' : ''}" aria-label="내 말 미리보기">
           <div class="horse-figure">
-            <img id="horse-portrait" src="${horseAppearance(initialAppearance).src}" alt="${horseAppearance(initialAppearance).label}" draggable="false"/>
+            <img id="horse-portrait" src="${horseAppearance(currentAppearance).src}" alt="${horseAppearance(currentAppearance).label}" draggable="false"/>
             <strong id="preview-name" class="preview-name">내 이름은 ???</strong>
           </div>
         </section>
@@ -222,6 +222,7 @@ function setPreviewName(name = '') {
   $('preview-name').textContent = `내 이름은 ${name || '???'}`;
 }
 function setPortrait(appearanceIndex = 0) {
+  currentAppearance = appearanceIndex;
   const appearance = horseAppearance(appearanceIndex);
   const portrait = $('horse-portrait');
   portrait.dataset.appearance = String(appearanceIndex);
@@ -255,7 +256,7 @@ async function openRoom(selectedMode, code) {
   try {
     await connect();
     lobbyError();
-    send(code && reservationToken ? { type: 'claim', name: activeName, reservationToken } : code ? { type: 'join', code, name: activeName } : { type: 'create', mode, name: activeName });
+    send(code && reservationToken ? { type: 'claim', name: activeName, reservationToken } : code ? { type: 'join', code, name: activeName } : { type: 'create', mode, name: activeName, appearance: currentAppearance });
     return true;
   } catch (e) { toast(e.message); return false; }
   finally { openRoom.busy = false; $('solo-button').disabled = $('friends-button').disabled = !confirmedName || confirmedName !== $('horse-name').value; }

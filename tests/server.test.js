@@ -35,9 +35,11 @@ test('registered names are rejected by HTTP and direct WebSocket requests', asyn
 });
 test('solo adds 7 AI; enforces readiness; caps acceleration; silence decays', async t => {
   const c = client(); t.after(() => c.socket.close()); await c.ready;
-  c.send({ type: 'create', mode: 'solo', name: '바람을따라' });
+  c.send({ type: 'create', mode: 'solo', name: '바람을따라', appearance: 6 });
   const joined = await c.wait(d => d.type === 'joined');
   const lobby = await c.wait(d => d.type === 'state');
+  assert.equal(lobby.players.find(p => p.id === joined.id).appearance, 6, 'solo keeps the preview horse');
+  assert.equal(new Set(lobby.players.map(p => p.appearance)).size, 8, 'AI horses do not duplicate the preview horse');
   assert.equal(lobby.players.length, 8); assert.equal(lobby.players.filter(p => p.bot).length, 7);
   assert.equal(new Set(lobby.players.map(p => p.name)).size, 8);
   c.send({ type: 'start' }); assert.match((await c.wait(d => d.type === 'error')).message, /준비/);
@@ -52,7 +54,9 @@ test('solo adds 7 AI; enforces readiness; caps acceleration; silence decays', as
 test('friends room supports 8 and removes disconnected players immediately', async t => {
   const clients = Array.from({ length: 9 }, client); t.after(() => clients.forEach(c => c.socket.close())); await Promise.all(clients.map(c => c.ready));
   const [host, ...guests] = clients;
-  host.send({ type: 'create', mode: 'friends', name: '바람을따라' }); const joined = await host.wait(d => d.type === 'joined');
+  host.send({ type: 'create', mode: 'friends', name: '바람을따라', appearance: 3 }); const joined = await host.wait(d => d.type === 'joined');
+  const lobby = await host.wait(d => d.type === 'state');
+  assert.equal(lobby.players.find(p => p.id === joined.id).appearance, 3, 'friends room keeps the preview horse');
   const names = ['우당탕질주','구름콩콩이','당근이좋아','새벽콩콩이','천둥발굽','오늘도전력','달빛을달려','초원의질주'];
   const invite = await fetch(`${origin}/api/invite/${joined.code}`).then(response => response.json());
   assert.equal(invite.ok, true);
