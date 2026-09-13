@@ -310,7 +310,7 @@ function renderLobby() {
   show('invite-area', friends); show('practice-button', !friends && !me?.ready); show('connect-mic', !me?.ready);
   $('connect-mic').disabled = voiceBusy;
   $('connect-mic').innerHTML = `${icon('mic')} ${voiceBusy ? '마이크 연결 중…' : '마이크 연결하기'}`;
-  const url = new URL(location.origin); url.searchParams.set('room', room.code); $('invite-link').value = url.href;
+  const url = new URL(location.href); url.search = ''; url.hash = ''; url.searchParams.set('room', room.code); $('invite-link').value = url.href;
   const signature = JSON.stringify(room.players.map(p => [p.id, p.name, p.ready, p.lane]));
   if (signature !== lastLobbySignature) {
     lastLobbySignature = signature;
