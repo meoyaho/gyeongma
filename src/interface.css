@@ -178,7 +178,7 @@ dialog::backdrop { background: #254f4660; backdrop-filter: blur(9px); }
   .hero-content { width: 330px; padding: 25px; }
 }
 @media (max-width: 760px) {
-  .horse-figure { width: 288px; height: 288px; max-width: 85.5vw; left: 50%; top: 280px; }
+  .horse-figure { width: 288px; height: 288px; max-width: 85.5vw; left: 50%; top: 250px; }
   #lobby-dialog { position: absolute; inset: 450px 20px auto; transform: none; width: calc(100% - 40px); max-height: none; margin-bottom: calc(48px + env(safe-area-inset-bottom)); }
   .site-header { padding: 18px; }
   .brand { font-size: 15px; padding-right: 15px; }
