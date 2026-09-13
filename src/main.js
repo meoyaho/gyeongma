@@ -30,7 +30,6 @@ let nameValidationRevision = 0, nameValidationController = null, reservationToke
 
 document.querySelector('#app').innerHTML = `
   <div id="home-view">
-    <header class="site-header"><a class="brand" href="/" aria-label="달려라 내말 홈"><span class="brand-icon">${icon('horse')}</span>달려라 내말</a></header>
     <main class="home-main">
       <div class="hero-grid">
         <section class="paddock ${inviteCode ? 'awaiting-horse' : ''}" aria-label="내 말 미리보기">
@@ -57,7 +56,7 @@ document.querySelector('#app').innerHTML = `
   </div>
   <section id="race-view" class="hidden" aria-label="경주 화면">
     <div id="race-scene"></div><div class="race-vignette"></div>
-    <div class="race-top"><button id="leave-race" class="race-button">← 나가기</button><div class="race-title"><span>달려라 내말.</span><small id="race-mode-label">혼자 경주</small></div><button id="sound-button" class="race-button" aria-label="효과음 켜기">${icon('volume')} <span>OFF</span></button></div>
+    <div class="race-top"><button id="leave-race" class="race-button">← 나가기</button><button id="sound-button" class="race-button" aria-label="효과음 켜기">${icon('volume')} <span>OFF</span></button></div>
     <div class="race-hud"><div class="rank-box"><span class="tiny-label">현재 순위</span><div><b id="race-rank">1</b><span id="race-field"> / 8</span></div></div><div class="progress-box"><div><span id="race-horse-name"></span><b id="race-distance">0 / 300m</b></div><div class="race-progress-track"><i id="race-progress"></i></div><small id="race-time">00.00</small></div></div>
     <div id="leaderboard" class="leaderboard"></div>
     <div id="countdown" class="countdown hidden"><strong id="countdown-number">3</strong></div>
@@ -344,7 +343,6 @@ function startView() {
   $('mic-transcript').textContent = ''; localCalls = 0; clearNameProgress();
   scene.setMode('race', room.players, myId); scene.update(room);
   $('race-horse-name').textContent = activeName; $('shout-name').innerHTML = [...activeName].map(char => `<span class="name-syllable" aria-hidden="true">${escape(char)}</span>`).join(''); $('shout-name').setAttribute('aria-label', activeName);
-  $('race-mode-label').textContent = mode === 'friends' ? '친구 경주' : inputMode === 'keyboard' ? '키보드 체험' : '혼자 경주';
   $('input-status').innerHTML = `${icon(inputMode === 'keyboard' ? 'keyboard' : 'mic')} ${inputMode === 'keyboard' ? '이름을 따라 써주세요' : '이름을 불러주세요'}`;
   const keyboardInput = $('keyboard-name-input');
   keyboardInput.value = ''; keyboardInput.maxLength = activeName.length; keyboardInput.disabled = room.phase !== 'racing'; keyboardInput.placeholder = room.phase === 'racing' ? activeName : '출발 대기'; keyboardCallLocked = false; keyboardComposing = false;
