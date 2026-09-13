@@ -32,7 +32,7 @@ body { background: #d6eee9; }
 .home-main { max-width: none; margin: 0; padding: 0; width: 100%; min-height: 100dvh; display: flex; align-items: center; }
 .hero-grid { display: flex; justify-content: flex-end; align-items: center; width: 100%; min-height: 100dvh; padding: 110px clamp(32px, 6vw, 112px) 60px; }
 .paddock { position: absolute; inset: 0; height: auto; background: transparent; overflow: hidden; z-index: 0; pointer-events: none; }
-.horse-figure { position: absolute; width: min(48.6vw, 675px, 70.2dvh); height: min(48.6vw, 675px, 70.2dvh); left: 32%; top: 53%; transform: translate(-50%, -50%); }
+.horse-figure { position: absolute; width: min(43.74vw, 607.5px, 63.18dvh); height: min(43.74vw, 607.5px, 63.18dvh); left: 32%; top: 53%; transform: translate(-50%, -50%); }
 #horse-portrait { width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; filter: drop-shadow(0 20px 14px #36675120); }
 .paddock.awaiting-horse #horse-portrait { visibility: hidden; }
 .hero-grid { pointer-events: none; }
@@ -178,7 +178,7 @@ dialog::backdrop { background: #254f4660; backdrop-filter: blur(9px); }
   .hero-content { width: 330px; padding: 25px; }
 }
 @media (max-width: 760px) {
-  .horse-figure { width: 288px; height: 288px; max-width: 85.5vw; left: 50%; top: 280px; }
+  .horse-figure { width: 259.2px; height: 259.2px; max-width: 76.95vw; left: 50%; top: 280px; }
   #lobby-dialog { position: absolute; inset: 450px 20px auto; transform: none; width: calc(100% - 40px); max-height: none; margin-bottom: calc(48px + env(safe-area-inset-bottom)); }
   .site-header { padding: 18px; }
   .brand { font-size: 15px; padding-right: 15px; }
