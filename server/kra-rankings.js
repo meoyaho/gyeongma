@@ -1,5 +1,5 @@
 const RANKING_URL = 'https://race.kra.co.kr/racehorse/scoreRecent50Object.do';
-const FALLBACK_NAMES = ['로쉬', '라온사일런스', '서클에이', '로열삭스', '글로벌챔프', '라온플로렌스', '제너럴윈드'];
+const FALLBACK_NAMES = ['라온사일런스', '서클에이', '로열삭스', '글로벌챔프', '라온플로렌스', '제너럴윈드', '한센브레이싱'];
 
 let cachedDate = '';
 let cachedNames = FALLBACK_NAMES;
@@ -14,7 +14,7 @@ export function parseKraRankingHtml(html) {
   const horseLink = /<a\s+[^>]*href=["']javascript:goPage3\('[^']+'\)["'][^>]*>([^<]+)<\/a>/gi;
   for (const match of html.matchAll(horseLink)) {
     const name = match[1].replace(/&nbsp;/gi, ' ').trim();
-    if (/^[가-힣]+$/.test(name) && !names.includes(name)) names.push(name);
+    if (/^[가-힣]{4,6}$/.test(name) && !names.includes(name)) names.push(name);
     if (names.length === 7) break;
   }
   if (names.length !== 7) throw new Error('한국마사회 순위표에서 경주마 7두를 찾지 못했습니다.');
