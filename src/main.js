@@ -36,7 +36,6 @@ document.querySelector('#app').innerHTML = `
         <section class="paddock ${inviteCode ? 'awaiting-horse' : ''}" aria-label="내 말 미리보기">
           <div class="horse-figure">
             <img id="horse-portrait" src="${horseAppearance(0).src}" alt="왼쪽을 바라보는 밤색 말" draggable="false"/>
-            <span id="horse-number" class="horse-number" aria-label="1번 말">1</span>
             <strong id="preview-name" class="preview-name">내 이름은 ???</strong>
           </div>
         </section>
@@ -199,8 +198,6 @@ function setPortrait(lane = 0) {
   portrait.dataset.lane = String(lane);
   portrait.src = appearance.src;
   portrait.alt = `왼쪽을 바라보는 ${appearance.label}`;
-  $('horse-number').textContent = lane + 1;
-  $('horse-number').setAttribute('aria-label', `${lane + 1}번 말`);
   const showAssignedHorse = () => { if (portrait.dataset.lane === String(lane)) document.querySelector('.paddock').classList.remove('awaiting-horse'); };
   portrait.addEventListener('load', showAssignedHorse, { once: true });
   if (portrait.complete && portrait.naturalWidth) showAssignedHorse();
@@ -318,7 +315,7 @@ function renderLobby() {
   const signature = JSON.stringify(room.players.map(p => [p.id, p.name, p.ready, p.lane]));
   if (signature !== lastLobbySignature) {
     lastLobbySignature = signature;
-    $('lobby-players').innerHTML = room.players.filter(p => friends || !p.bot).map(p => `<div class="player-card"><span class="player-avatar"><img src="${horseAppearance(p.lane).src}" alt="${horseAppearance(p.lane).label}" draggable="false"/><span class="player-avatar-number" aria-hidden="true">${p.lane + 1}</span></span><span><b>${escape(p.name || '이름 짓는 중')} ${p.id === myId ? '<small>나</small>' : ''}</b><small>${p.id === room.host ? '방장' : '참가자'} · ${p.lane + 1}번</small></span><span class="player-ready ${p.connected && p.ready ? 'is-ready' : ''}">${p.reserved ? '이름 짓는 중' : p.ready ? '준비 완료 ✓' : '준비 중'}</span></div>`).join('');
+    $('lobby-players').innerHTML = room.players.filter(p => friends || !p.bot).map(p => `<div class="player-card"><span class="player-avatar"><img src="${horseAppearance(p.lane).src}" alt="${horseAppearance(p.lane).label}" draggable="false"/></span><span><b>${escape(p.name || '이름 짓는 중')} ${p.id === myId ? '<small>나</small>' : ''}</b><small>${p.id === room.host ? '방장' : '참가자'} · ${p.lane + 1}번</small></span><span class="player-ready ${p.connected && p.ready ? 'is-ready' : ''}">${p.reserved ? '이름 짓는 중' : p.ready ? '준비 완료 ✓' : '준비 중'}</span></div>`).join('');
   }
   show('start-race', !!me?.ready && host);
   $('start-race').disabled = !room.players.every(p => p.connected && p.ready) || (friends && room.players.filter(p => p.connected).length < 2);

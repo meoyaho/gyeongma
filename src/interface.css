@@ -34,8 +34,7 @@ body { background: #d6eee9; }
 .paddock { position: absolute; inset: 0; height: auto; background: transparent; overflow: hidden; z-index: 0; pointer-events: none; }
 .horse-figure { position: absolute; width: min(54vw, 750px, 78dvh); height: min(54vw, 750px, 78dvh); left: 32%; top: 53%; transform: translate(-50%, -50%); }
 #horse-portrait { width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; filter: drop-shadow(0 20px 14px #36675120); }
-.paddock.awaiting-horse #horse-portrait, .paddock.awaiting-horse .horse-number { visibility: hidden; }
-.horse-number { position: absolute; z-index: 2; left: 68.5%; top: 52.5%; transform: translate(-50%, -50%); color: #254f46; font-size: clamp(24px, 2.86vw, 42px); font-weight: 800; line-height: 1; -webkit-text-stroke: 4px #fff; paint-order: stroke fill; text-shadow: 0 1px 2px #315e4f40; }
+.paddock.awaiting-horse #horse-portrait { visibility: hidden; }
 .hero-grid { pointer-events: none; }
 .hero-content { pointer-events: auto; position: relative; z-index: 1; }
 #home-view.lobby-open .hero-content { visibility: hidden; pointer-events: none; }
@@ -97,7 +96,6 @@ dialog::backdrop { background: #254f4660; backdrop-filter: blur(9px); }
 .player-ready.is-ready { color: #3c8a70; }
 .player-avatar { position: relative; background: transparent !important; width: 52px; height: 52px; flex-shrink: 0; border-radius: 0; }
 .player-avatar img { width: 100%; height: 100%; object-fit: contain; }
-.player-avatar-number { position: absolute; left: 68.5%; top: 52.5%; transform: translate(-50%, -50%); color: #254f46; font-size: 7.7px; font-weight: 800; line-height: 1; -webkit-text-stroke: 1px #fff; paint-order: stroke fill; }
 .mic-test { border-radius: 16px; background: #d8eae15c; border: 1px solid #fff9; }
 .mic-test-icon { color: #568e7a; }
 .mic-meter { background: #bed7cc; border-radius: 9px; overflow: hidden; }
@@ -181,7 +179,6 @@ dialog::backdrop { background: #254f4660; backdrop-filter: blur(9px); }
 }
 @media (max-width: 760px) {
   .horse-figure { width: 320px; height: 320px; max-width: 95vw; left: 50%; top: 280px; }
-  .horse-number { font-size: 22px; }
   #lobby-dialog { position: absolute; inset: 450px 20px auto; transform: none; width: calc(100% - 40px); max-height: none; margin-bottom: calc(48px + env(safe-area-inset-bottom)); }
   .site-header { padding: 18px; }
   .brand { font-size: 15px; padding-right: 15px; }
