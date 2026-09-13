@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeNameProgress } from '../src/name-progress.js';
+import { analyzeNameProgress, normalizeKoreanPronunciation } from '../src/name-progress.js';
 
 test('colors only the matching prefix and counts complete non-overlapping names', () => {
   const name = '바람을따라';
@@ -19,4 +19,10 @@ test('repeated starts and revised hypotheses reset partial highlighting without 
 test('names with repeated syllables do not count overlapping matches', () => {
   assert.deepEqual(analyzeNameProgress('하하하하하하', '하하하하'), { count: 1, progress: 2 });
   assert.deepEqual(analyzeNameProgress('바람바바람바람', '바람바람'), { count: 1, progress: 0 });
+});
+
+test('accepts equivalent liaison spellings without allowing unrelated syllables', () => {
+  assert.equal(normalizeKoreanPronunciation('주겨버려'), normalizeKoreanPronunciation('죽여버려'));
+  assert.deepEqual(analyzeNameProgress('죽여버려', '주겨버려'), { count: 1, progress: 0 });
+  assert.deepEqual(analyzeNameProgress('죽여보려', '주겨버려'), { count: 0, progress: 0 });
 });
