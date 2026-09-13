@@ -55,6 +55,14 @@ Chrome에서 한국어 음성 인식을 확인하도록 구성했습니다. 브�
 
 GitHub Pages를 화면 주소로 유지하면서 서버를 분리할 때는 현재 Docker 이미지를 Cloud Run에 배포합니다. Cloud Run 주소를 GitHub 저장소의 Actions 변수 `VITE_SERVER_ORIGIN`에 저장하면 Pages 빌드가 이름 확인 API와 WebSocket을 그 서버에 연결합니다. 서버의 `FRONTEND_ORIGINS`에는 `https://meoyaho.github.io`를 설정합니다. 현재 경주 상태가 단일 프로세스 메모리에 있으므로 Cloud Run 최대 인스턴스는 1개로 제한해야 합니다.
 
+현재 GitHub Actions는 화면만 배포합니다. `server/` 또는 서버에서 사용하는 `shared/` 코드를 수정했다면 Cloud Run도 업데이트해야 공개 사이트에 적용됩니다. 로컬 서버 재시작은 공개 서버에 영향을 주지 않습니다.
+
+```sh
+gcloud run deploy horse-name-server --source . --project horse-name --region asia-northeast3 --max-instances 1
+```
+
+소스 업로드에서 `.env` 등 로컬 설정은 `.gcloudignore`로 제외합니다. 기존 Cloud Run 환경변수는 유지됩니다. 서버 교체 시 진행 중인 방은 종료될 수 있습니다.
+
 ## 검증
 
 개발 서버를 실행한 상태에서:
