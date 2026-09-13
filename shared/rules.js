@@ -10,7 +10,7 @@ export function validateName(name) {
   if (name.length < 4 || name.length > 6) return { ok: false, message: '말 이름은 4~6글자로 입력해주세요.' };
   return { ok: true, message: '이름 형식이 확인되었습니다.' };
 }
-export const RACE_DISTANCE = 300;
+export const RACE_DISTANCE = 200;
 export const MIN_SPEED = 5;
 export const MAX_SPEED = 20;
 export const BOOST_WINDOW = 2000;

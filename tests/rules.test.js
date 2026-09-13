@@ -17,6 +17,6 @@ test('silence has minimum speed; 4 repeats in two seconds have maximum speed', (
   assert.equal(speedForCalls([8500, 9000, 9500, 9999], 10000), MAX_SPEED);
   assert.equal(speedForCalls(Array(100).fill(9000), 10000), MAX_SPEED);
   assert.equal(speedForCalls([7000, 8000, 11000], 10000), MIN_SPEED);
-  assert.equal(RACE_DISTANCE / MAX_SPEED, 15);
-  assert.equal(RACE_DISTANCE / MIN_SPEED, 60);
+  assert.equal(RACE_DISTANCE / MAX_SPEED, 10);
+  assert.equal(RACE_DISTANCE / MIN_SPEED, 40);
 });

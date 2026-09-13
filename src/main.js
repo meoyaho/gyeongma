@@ -57,7 +57,7 @@ document.querySelector('#app').innerHTML = `
   <section id="race-view" class="hidden" aria-label="경주 화면">
     <div id="race-scene"></div><div class="race-vignette"></div>
     <div class="race-top"><button id="leave-race" class="race-button">← 나가기</button><button id="sound-button" class="race-button" aria-label="효과음 켜기">${icon('volume')} <span>OFF</span></button></div>
-    <div class="race-hud"><div class="rank-box"><span class="tiny-label">현재 순위</span><div><b id="race-rank">1</b><span id="race-field"> / 8</span></div></div><div class="progress-box"><div><span id="race-horse-name"></span><b id="race-distance">0 / 300m</b></div><div class="race-progress-track"><i id="race-progress"></i></div><small id="race-time">00.00</small></div></div>
+    <div class="race-hud"><div class="rank-box"><span class="tiny-label">현재 순위</span><div><b id="race-rank">1</b><span id="race-field"> / 8</span></div></div><div class="progress-box"><div><span id="race-horse-name"></span><b id="race-distance">0 / ${RACE_DISTANCE}m</b></div><div class="race-progress-track"><i id="race-progress"></i></div><small id="race-time">00.00</small></div></div>
     <div id="leaderboard" class="leaderboard"></div>
     <div id="countdown" class="countdown hidden"><strong id="countdown-number">3</strong></div>
     <div class="race-controls"><div class="speed-readout"><b id="speed-value">18</b><span>km/h</span><small id="speed-label">기본 속도</small></div><div class="shout-panel"><div class="shout-label"><span id="input-status">${icon('mic')} 이름을 불러주세요</span><span id="call-count">0회 인식</span></div><strong id="shout-name"></strong><div id="voice-bars" class="voice-bars">${Array.from({ length: 25 }, (_, i) => `<i style="--i:${i}"></i>`).join('')}</div><p id="transcript"></p><input id="keyboard-name-input" class="keyboard-name-input hidden" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="경주마 이름 따라 쓰기"/><button id="reconnect-mic" class="button secondary hidden">마이크 다시 연결</button></div><div class="boost-readout"><span>가속</span><div class="boost-track"><i id="boost-fill"></i></div><b id="boost-value">0%</b></div></div>
@@ -356,7 +356,7 @@ function updateRace() {
   const me = room.players.find(p => p.id === myId); if (!me) return;
   const sorted = sortedPlayers(), rank = sorted.findIndex(p => p.id === myId) + 1;
   $('race-rank').textContent = rank; $('race-field').textContent = ` / ${room.players.length}`;
-  $('race-distance').textContent = `${Math.min(300, Math.floor(me.distance))} / 300m`;
+  $('race-distance').textContent = `${Math.min(RACE_DISTANCE, Math.floor(me.distance))} / ${RACE_DISTANCE}m`;
   $('race-progress').style.width = `${me.distance / RACE_DISTANCE * 100}%`;
   $('speed-value').textContent = Math.round(me.speed * 3.6);
   const boost = Math.round((me.speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED) * 100);

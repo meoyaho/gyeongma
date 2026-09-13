@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { horse, animateHorse } from './horse-model.js';
+import { RACE_DISTANCE } from '../shared/rules.js';
 
 const COLORS = [0x41654b, 0xf0b755, 0xe47f68, 0x8e9dc2, 0x90af75, 0xb17b9d, 0xe6c9a1, 0x69a9aa];
 const sphere = new THREE.SphereGeometry(1, 16, 12);
@@ -73,7 +74,7 @@ export class RaceScene {
       for (let j = 0; j < 45; j++) part(this.track, sphere, COLORS[(i + j) % 8], [31 + i * 2.5, 1.25 + i * 1.2, -68 - j * 2.4], [.24, .35, .24]);
     }
     part(this.track, box, 0xeff0dc, [38, 8.5, -120], [21, .3, 116], [0, 0, .08]);
-    const finish = new THREE.Group(); finish.position.z = -300; this.track.add(finish);
+    const finish = new THREE.Group(); finish.position.z = -RACE_DISTANCE; this.track.add(finish);
     for (const x of [-12.5, 12.5]) part(finish, box, 0xf1edcf, [x, 3.4, 0], [.4, 6.8, .4]);
     part(finish, box, 0x244b37, [0, 6.3, 0], [25.5, 1.2, .3]);
     const label = document.createElement('canvas'); label.width = 1024; label.height = 96;
