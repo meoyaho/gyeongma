@@ -25,6 +25,34 @@ const serverOrigin = (import.meta.env.VITE_SERVER_ORIGIN || location.origin).rep
 const apiUrl = path => `${serverOrigin}${path}`;
 const websocketUrl = `${serverOrigin.replace(/^http/, 'ws')}/ws`;
 let room = null, myId = null, ws = null, activeName = '', mode = 'solo', inputMode = 'voice', micReady = false, voiceBusy = false, view = 'home', localCalls = 0, keyboardCallLocked = false, keyboardComposing = false, sound = false, audioContext, lastHoof = 0;
+const musicSources = {
+  lobby: encodeURI(`${import.meta.env.BASE_URL}대기실.mp3`),
+  racing: encodeURI(`${import.meta.env.BASE_URL}경주.mp3`),
+};
+// Reuse the player unlocked by the sound-button click when the race starts.
+const music = new Audio();
+music.loop = true;
+music.volume = 0.5;
+music.preload = 'auto';
+let musicTrack = null, musicRequest = 0;
+function stopMusic() {
+  musicRequest++;
+  musicTrack = null;
+  music.pause();
+}
+function syncMusic(retry = false) {
+  const track = !sound || room?.phase === 'finished' ? null : room?.phase === 'racing' ? 'racing' : 'lobby';
+  if (!track) { if (musicTrack) stopMusic(); return; }
+  if (track === musicTrack && !retry) return;
+  musicTrack = track;
+  if (music.getAttribute('src') !== musicSources[track]) music.src = musicSources[track];
+  const request = ++musicRequest;
+  music.play().catch(error => {
+    if (request !== musicRequest || error.name === 'AbortError') return;
+    console.warn('배경음 재생 실패:', error);
+    toast('음악을 재생하지 못했어요. 사운드를 껐다가 다시 켜주세요.');
+  });
+}
 let timeOffset = 0, lastSuggestion = '', lastLobbySignature = '', confirmedName = '';
 let nameValidationRevision = 0, nameValidationController = null, reservationToken = null;
 const randomAppearance = () => crypto.getRandomValues(new Uint32Array(1))[0] % 8;
@@ -32,6 +60,7 @@ const initialAppearance = randomAppearance();
 
 document.querySelector('#app').innerHTML = `
   <div id="home-view">
+    <button id="home-sound-button" class="race-button home-sound-button" aria-label="배경음 켜기">${icon('volume')} <span>OFF</span></button>
     <main class="home-main">
       <div class="hero-grid">
         <section class="paddock ${inviteCode ? 'awaiting-horse' : ''}" aria-label="내 말 미리보기">
@@ -58,7 +87,7 @@ document.querySelector('#app').innerHTML = `
   </div>
   <section id="race-view" class="hidden" aria-label="경주 화면">
     <div id="race-scene"></div><div class="race-vignette"></div>
-    <div class="race-top"><button id="leave-race" class="race-button">← 나가기</button><button id="sound-button" class="race-button" aria-label="효과음 켜기">${icon('volume')} <span>OFF</span></button></div>
+    <div class="race-top"><button id="leave-race" class="race-button">← 나가기</button><button id="sound-button" class="race-button" aria-label="사운드 켜기">${icon('volume')} <span>OFF</span></button></div>
     <div class="race-hud"><div class="rank-box"><span class="tiny-label">현재 순위</span><div><b id="race-rank">1</b><span id="race-field"> / 8</span></div></div><div class="progress-box"><div><span id="race-horse-name"></span><b id="race-distance">0 / ${RACE_DISTANCE}m</b></div><div class="race-progress-track"><i id="race-progress"></i></div><small id="race-time">00.00</small></div></div>
     <div id="leaderboard" class="leaderboard"></div>
     <div id="countdown" class="countdown hidden"><strong id="countdown-number">3</strong></div>
@@ -269,6 +298,7 @@ function receive(data) {
   if (data.type !== 'state') return;
   const previousPhase = room?.phase;
   room = data; mode = data.mode; timeOffset = data.serverNow - Date.now();
+  syncMusic();
   if (room.phase === 'lobby') {
     const me = room.players.find(player => player.id === myId);
     if (me?.reserved) {
@@ -374,7 +404,7 @@ function renderResult(sorted, me, rank) {
   $('result-title').textContent = `${rank}위`;
   $('result-description').textContent = activeName;
   $('result-time').textContent = `${me.finishTime.toFixed(2)}초`; $('result-calls').textContent = `${me.totalCalls}회`;
-  $('result-board').innerHTML = sorted.map((p, i) => `<div class="result-row ${p.id === myId ? 'me' : ''}"><span>${i + 1}</span><b>${escape(p.name)} ${p.id === myId ? '<small>나</small>' : ''}</b><span>${!p.connected && !p.finishTime ? '기권' : p.finishTime ? `${p.finishTime.toFixed(2)}초` : '달리는 중'}</span></div>`).join('');
+  $('result-board').innerHTML = sorted.map((p, i) => `<div class="result-row ${p.id === myId ? 'me' : ''}"><span>${i + 1}</span><b>${escape(p.name)} ${p.id === myId ? '<small>나</small>' : ''}</b><span>${!p.connected && !p.finishTime ? '기권' : p.finishTime ? `${p.finishTime.toFixed(2)}초` : '달리는 중'}</span><span class="result-player-calls">인식 ${p.totalCalls ?? 0}회</span></div>`).join('');
   $('result-wait').textContent = room.phase !== 'finished' ? '다른 참가자 경주 중' : room.host !== myId ? '방장 재경주 대기' : '';
   $('replay').disabled = room.host !== myId || room.phase !== 'finished';
 }
@@ -382,6 +412,7 @@ function resetHome() {
   $('home-view').classList.remove('lobby-open');
   $('home-view').style.removeProperty('min-height');
   voice.stop(); micReady = false; voiceBusy = false; localCalls = 0; room = null; myId = null; view = 'home'; lastLobbySignature = '';
+  syncMusic();
   $('lobby-dialog').close(); $('result-dialog').close(); show('race-view', false); show('home-view');
   scene?.setMode('home'); clearNameProgress(); lobbyError();
   setPortrait(randomAppearance());
@@ -428,11 +459,18 @@ $('keyboard-name-input').addEventListener('compositionend', () => {
 document.addEventListener('keydown', () => {
   if (view === 'race' && inputMode === 'keyboard' && !$('result-dialog').open) $('keyboard-name-input').focus();
 });
-$('sound-button').onclick = async () => {
+function toggleSound() {
   sound = !sound;
-  if (sound) { audioContext ||= new (window.AudioContext || window.webkitAudioContext)(); await audioContext.resume(); }
-  $('sound-button').innerHTML = `${icon('volume')} <span>${sound ? 'ON' : 'OFF'}</span>`; $('sound-button').setAttribute('aria-label', `효과음 ${sound ? '끄기' : '켜기'}`);
-};
+  syncMusic(true); // Start playback directly within the user gesture.
+  if (sound) {
+    audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
+    audioContext.resume().catch(error => console.warn('효과음 재생 실패:', error));
+  }
+  $('sound-button').innerHTML = `${icon('volume')} <span>${sound ? 'ON' : 'OFF'}</span>`; $('sound-button').setAttribute('aria-label', `사운드 ${sound ? '끄기' : '켜기'}`);
+  $('home-sound-button').innerHTML = `${icon('volume')} <span>${sound ? 'ON' : 'OFF'}</span>`; $('home-sound-button').setAttribute('aria-label', `배경음 ${sound ? '끄기' : '켜기'}`);
+}
+$('sound-button').onclick = toggleSound;
+$('home-sound-button').onclick = toggleSound;
 function frame() {
   if (room && view === 'race') {
     const me = room.players.find(p => p.id === myId);
@@ -458,4 +496,4 @@ async function reserveInvite() {
 }
 reserveInvite();
 window.addEventListener('resize', updateLobbyPageHeight);
-window.addEventListener('pagehide', () => { voice.stop(); ws?.close(); });
+window.addEventListener('pagehide', () => { stopMusic(); voice.stop(); ws?.close(); });
