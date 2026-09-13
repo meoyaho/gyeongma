@@ -298,6 +298,6 @@ if (process.argv.includes('--production')) {
   app.use(vite.middlewares);
 }
 const port = Number(process.env.PORT) || 3000;
-server.listen(port, '0.0.0.0', () => console.log(`달려라 내말 → http://localhost:${port}`));
+server.listen(port, '0.0.0.0', () => console.log(`달려라 달려 → http://localhost:${port}`));
 function shutdown() { clearInterval(ticker); clearInterval(heartbeat); wss.clients.forEach(ws => ws.terminate()); server.close(() => process.exit(0)); }
 process.on('SIGTERM', shutdown); process.on('SIGINT', shutdown);
