@@ -27,6 +27,8 @@ const websocketUrl = `${serverOrigin.replace(/^http/, 'ws')}/ws`;
 let room = null, myId = null, ws = null, activeName = '', mode = 'solo', inputMode = 'voice', micReady = false, voiceBusy = false, view = 'home', localCalls = 0, keyboardCallLocked = false, keyboardComposing = false, sound = false, audioContext, lastHoof = 0;
 let timeOffset = 0, lastSuggestion = '', lastLobbySignature = '', confirmedName = '';
 let nameValidationRevision = 0, nameValidationController = null, reservationToken = null;
+const randomAppearance = () => crypto.getRandomValues(new Uint32Array(1))[0] % 8;
+const initialAppearance = randomAppearance();
 
 document.querySelector('#app').innerHTML = `
   <div id="home-view">
@@ -34,7 +36,7 @@ document.querySelector('#app').innerHTML = `
       <div class="hero-grid">
         <section class="paddock ${inviteCode ? 'awaiting-horse' : ''}" aria-label="내 말 미리보기">
           <div class="horse-figure">
-            <img id="horse-portrait" src="${horseAppearance(0).src}" alt="왼쪽을 바라보는 밤색 말" draggable="false"/>
+            <img id="horse-portrait" src="${horseAppearance(initialAppearance).src}" alt="${horseAppearance(initialAppearance).label}" draggable="false"/>
             <strong id="preview-name" class="preview-name">내 이름은 ???</strong>
           </div>
         </section>
@@ -115,7 +117,6 @@ async function confirmName() {
       if (!response.ok || data.ok !== true) result = { ok: false, message: data.message || '이름을 확인하지 못했습니다. 다시 시도해주세요.' };
       else {
         result = data;
-        if (data.room && !reservationToken) setPortrait(data.room.nextLane);
       }
     } catch {
       result = { ok: false, message: '이름 조회를 완료하지 못했습니다. 잠시 후 다시 확인해주세요.' };
@@ -191,13 +192,13 @@ function send(data) { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.string
 function setPreviewName(name = '') {
   $('preview-name').textContent = `내 이름은 ${name || '???'}`;
 }
-function setPortrait(lane = 0) {
-  const appearance = horseAppearance(lane);
+function setPortrait(appearanceIndex = 0) {
+  const appearance = horseAppearance(appearanceIndex);
   const portrait = $('horse-portrait');
-  portrait.dataset.lane = String(lane);
+  portrait.dataset.appearance = String(appearanceIndex);
   portrait.src = appearance.src;
   portrait.alt = `왼쪽을 바라보는 ${appearance.label}`;
-  const showAssignedHorse = () => { if (portrait.dataset.lane === String(lane)) document.querySelector('.paddock').classList.remove('awaiting-horse'); };
+  const showAssignedHorse = () => { if (portrait.dataset.appearance === String(appearanceIndex)) document.querySelector('.paddock').classList.remove('awaiting-horse'); };
   portrait.addEventListener('load', showAssignedHorse, { once: true });
   if (portrait.complete && portrait.naturalWidth) showAssignedHorse();
 }
@@ -233,7 +234,7 @@ async function openRoom(selectedMode, code) {
 function receive(data) {
   if (data.type === 'reserved') {
     myId = data.id; reservationToken = data.reservationToken;
-    setPortrait(data.lane);
+    setPortrait(data.appearance);
     return;
   }
   if (data.type === 'joined') {
@@ -271,7 +272,7 @@ function receive(data) {
   if (room.phase === 'lobby') {
     const me = room.players.find(player => player.id === myId);
     if (me?.reserved) {
-      setPortrait(me.lane);
+      setPortrait(me.appearance);
       $('invite-banner').querySelector('span').textContent = `${room.players.length}/8명 참가`;
       return;
     }
@@ -303,7 +304,7 @@ function receive(data) {
 }
 function renderLobby() {
   const friends = mode === 'friends', me = room.players.find(p => p.id === myId), host = room.host === myId;
-  setPortrait(me?.lane);
+  setPortrait(me?.appearance);
   setPreviewName(me?.name);
   $('lobby-title').textContent = friends ? '참가 대기실' : '마이크 설정';
   $('lobby-description').textContent = friends ? `${room.players.length}/8명 참가` : '';
@@ -314,7 +315,7 @@ function renderLobby() {
   const signature = JSON.stringify(room.players.map(p => [p.id, p.name, p.ready, p.lane]));
   if (signature !== lastLobbySignature) {
     lastLobbySignature = signature;
-    $('lobby-players').innerHTML = room.players.filter(p => friends || !p.bot).map(p => `<div class="player-card"><span class="player-avatar"><img src="${horseAppearance(p.lane).src}" alt="${horseAppearance(p.lane).label}" draggable="false"/></span><span><b>${escape(p.name || '이름 짓는 중')} ${p.id === myId ? '<small>나</small>' : ''}</b><small>${p.id === room.host ? '방장' : '참가자'} · ${p.lane + 1}번</small></span><span class="player-ready ${p.connected && p.ready ? 'is-ready' : ''}">${p.reserved ? '이름 짓는 중' : p.ready ? '준비 완료 ✓' : '준비 중'}</span></div>`).join('');
+    $('lobby-players').innerHTML = room.players.filter(p => friends || !p.bot).map(p => `<div class="player-card"><span class="player-avatar"><img src="${horseAppearance(p.appearance).src}" alt="${horseAppearance(p.appearance).label}" draggable="false"/></span><span><b>${escape(p.name || '이름 짓는 중')} ${p.id === myId ? '<small>나</small>' : ''}</b><small>${p.id === room.host ? '방장' : '참가자'} · ${p.lane + 1}번</small></span><span class="player-ready ${p.connected && p.ready ? 'is-ready' : ''}">${p.reserved ? '이름 짓는 중' : p.ready ? '준비 완료 ✓' : '준비 중'}</span></div>`).join('');
   }
   show('start-race', !!me?.ready && host);
   $('start-race').disabled = !room.players.every(p => p.connected && p.ready) || (friends && room.players.filter(p => p.connected).length < 2);
@@ -383,7 +384,7 @@ function resetHome() {
   voice.stop(); micReady = false; voiceBusy = false; localCalls = 0; room = null; myId = null; view = 'home'; lastLobbySignature = '';
   $('lobby-dialog').close(); $('result-dialog').close(); show('race-view', false); show('home-view');
   scene?.setMode('home'); clearNameProgress(); lobbyError();
-  setPortrait(inviteCode ? 1 : 0);
+  setPortrait(randomAppearance());
   setPreviewName(confirmedName === $('horse-name').value ? confirmedName : '');
   $('mic-title').textContent = '마이크를 연결해주세요'; $('mic-description').textContent = '';
   $('mic-transcript').textContent = '';

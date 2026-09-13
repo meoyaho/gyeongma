@@ -77,6 +77,11 @@ function nextLane(room) {
   while (used.has(lane) && lane < 8) lane++;
   return lane;
 }
+function nextAppearance(room) {
+  const used = new Set(room.players.map(player => player.appearance));
+  const available = Array.from({ length: 8 }, (_, index) => index).filter(index => !used.has(index));
+  return available[randomBytes(1)[0] % available.length];
+}
 function inviteSummary(room) {
   return { code: room.code, playerCount: room.players.length, capacity: 8, nextLane: nextLane(room) };
 }
@@ -106,7 +111,7 @@ function snapshot(room, now = Date.now()) {
     players: room.players.map(({ ws, calls, resumeHash: _resumeHash, token: _token, ...p }) => p) };
 }
 function broadcast(room) { const data = snapshot(room); room.players.forEach(p => send(p.ws, data)); }
-function player(ws, name, lane, token = null) { return { id: randomUUID(), resumeHash: token ? resumeHash(token) : null, name, lane, ready: false, bot: false, connected: true, reserved: !name, distance: 0, speed: MIN_SPEED, calls: [], totalCalls: 0, finishTime: null, ws, token }; }
+function player(ws, name, lane, appearance, token = null) { return { id: randomUUID(), resumeHash: token ? resumeHash(token) : null, name, lane, appearance, ready: false, bot: false, connected: true, reserved: !name, distance: 0, speed: MIN_SPEED, calls: [], totalCalls: 0, finishTime: null, ws, token }; }
 function leave(ws) {
   ws.joinGeneration = (ws.joinGeneration || 0) + 1;
   ws.pendingJoin = false;
@@ -146,7 +151,7 @@ wss.on('connection', (ws, req) => {
         const problem = joinProblem(room);
         if (problem) return fail(problem.message);
         const token = randomBytes(24).toString('base64url');
-        const p = player(ws, '', nextLane(room), token);
+        const p = player(ws, '', nextLane(room), nextAppearance(room), token);
         room.players.push(p);
         ws.roomCode = room.code; ws.playerId = p.id;
         try { await persist(room); }
@@ -155,7 +160,7 @@ wss.on('connection', (ws, req) => {
           ws.roomCode = null; ws.playerId = null;
           return fail('참가 자리를 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
         }
-        send(ws, { type: 'reserved', id: p.id, code: room.code, lane: p.lane, reservationToken: token });
+        send(ws, { type: 'reserved', id: p.id, code: room.code, lane: p.lane, appearance: p.appearance, reservationToken: token });
         delete p.token;
         broadcast(room);
         return;
@@ -208,13 +213,13 @@ wss.on('connection', (ws, req) => {
           if (problem) return fail(problem.message);
         }
         const lane = nextLane(room);
-        const p = player(ws, msg.name, lane);
+        const p = player(ws, msg.name, lane, nextAppearance(room));
         room.players.push(p);
         if (!room.host) room.host = p.id;
         ws.roomCode = room.code; ws.playerId = p.id;
         if (room.mode === 'solo') {
           const rankedAiHorseNames = await getRankedAiHorseNames();
-          for (let i = 1; i < 8; i++) room.players.push({ ...player(null, rankedAiHorseNames[i - 1], i), id: `bot-${i}`, ready: true, bot: true });
+          for (let i = 1; i < 8; i++) room.players.push({ ...player(null, rankedAiHorseNames[i - 1], i, nextAppearance(room)), id: `bot-${i}`, ready: true, bot: true });
         }
         if (room.mode === 'friends') {
           try { await persist(room); }

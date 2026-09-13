@@ -31,6 +31,7 @@ export async function saveRoom(room) {
       resumeHash: player.resumeHash,
       name: player.name,
       lane: player.lane,
+      appearance: player.appearance,
       ready: player.ready,
     })),
   };

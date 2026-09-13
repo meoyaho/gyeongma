@@ -74,7 +74,7 @@ test('friends room supports 8 and removes disconnected players immediately', asy
   for (let i = 0; i < 7; i++) { guests[i].send({ type: 'join', code: joined.code, name: names[i] }); await guests[i].wait(d => d.type === 'joined'); }
   const full = await host.wait(d => d.type === 'state' && d.players.length === 8); assert.equal(full.players.filter(p => p.bot).length, 0);
   assert.equal(full.players.some(p => p.resumeHash || p.reservationToken), false, 'reservation credentials are private');
-  assert.equal(new Set(full.players.map(p => horseAppearance(p.lane).src)).size, 8, 'all players receive distinct horse illustrations');
+  assert.equal(new Set(full.players.map(p => horseAppearance(p.appearance).src)).size, 8, 'all players receive distinct horse illustrations');
   guests[7].send({ type: 'join', code: joined.code, name: names[7] }); assert.match((await guests[7].wait(d => d.type === 'error')).message, /8명/);
   guests[0].send({ type: 'start' }); assert.match((await guests[0].wait(d => d.type === 'error')).message, /방장/);
   host.clear(); host.send({ type: 'start' }); assert.match((await host.wait(d => d.type === 'error')).message, /준비/);
