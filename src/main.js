@@ -308,7 +308,17 @@ function receive(data) {
   if (data.type === 'expired') { resetHome(); toast('대기실이 만료됐어요. 새 경주를 만들어주세요.'); return; }
   if (data.type === 'error') {
     if ($('lobby-dialog').open) lobbyError(data.message);
-    else if (inviteCode && (!room || reservationToken)) {
+    else if (inviteCode && !room && !reservationToken) {
+      inviteCode = null;
+      history.replaceState(null, '', location.pathname);
+      $('invite-banner')?.remove();
+      $('home-view').querySelector('.paddock').classList.remove('awaiting-horse');
+      $('home-view').querySelector('.play-actions').classList.remove('hidden');
+      $('friends-button').setAttribute('aria-label', '친구와 달리기');
+      $('friends-button').querySelector('strong').textContent = '친구와 달리기';
+      updateName();
+      toast(data.message);
+    } else if (inviteCode && reservationToken) {
       confirmedName = '';
       $('solo-button').disabled = $('friends-button').disabled = true;
       $('confirm-name').disabled = false;
