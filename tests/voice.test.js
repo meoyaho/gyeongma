@@ -114,8 +114,8 @@ for (const device of [
     rec.emit('바람을따라');
     assert.equal(await start, true);
     assert.equal(captures(), 0, 'mobile never opens a volume-meter capture');
-    rec.onspeechstart(); assert.equal(levels.at(-1), 0.65);
-    rec.onspeechend(); assert.equal(levels.at(-1), 0);
+    rec.onspeechstart(); assert.equal(levels.at(-1), 0.85);
+    rec.onspeechend(); assert.equal(levels.at(-1), 0.85, 'retain the pulse long enough to see it');
   });
 }
 
@@ -307,4 +307,43 @@ test('iOS release fallback is bounded and cancelled when the user stops', async 
 test('voice environment detects Instagram and desktop-mode iPad independently', () => {
   assert.deepEqual(getVoiceEnvironment({ userAgent: 'Android Instagram' }), { ios: false, mobile: true, instagram: true });
   assert.deepEqual(getVoiceEnvironment({ userAgent: 'Macintosh Safari', platform: 'MacIntel', maxTouchPoints: 5 }), { ios: true, mobile: true, instagram: false });
+});
+
+
+test('mobile transcript results animate and decay without speech boundary events', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { controller, recognizers, levels, captures } = setupVoice(t);
+  const calls = []; controller.onCalls = count => calls.push(count);
+  const start = controller.start('바람을따라');
+  const rec = recognizers[0];
+  rec.onstart();
+  assert.equal(levels.at(-1), 0, 'starting a microphone does not fake speech activity');
+  rec.emit(''); assert.equal(levels.at(-1), 0);
+  rec.emit('바람을따라');
+  assert.equal(await start, true);
+  assert.equal(levels.at(-1), 0.85);
+  for (const expected of [0.7, 0.5, 0.32, 0.18, 0.08, 0]) {
+    t.mock.timers.tick(90); assert.equal(levels.at(-1), expected);
+  }
+  rec.emit('바람을따라');
+  assert.equal(levels.at(-1), 0.85, 'a subsequent recognition event retriggers the pulse');
+  assert.deepEqual(calls, [1], 'visual pulses do not add duplicate name calls');
+  assert.equal(captures(), 0, 'no competing microphone capture for mobile metering');
+});
+
+test('a final result remains visible across immediate speechend/end and stops cleanly', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { controller, recognizers, levels } = setupVoice(t);
+  const start = controller.start('바람을따라');
+  const rec = recognizers[0], lateResult = rec.onresult;
+  rec.onstart(); rec.emit('바람을따라'); await start;
+  rec.onspeechend(); rec.onend();
+  assert.equal(levels.at(-1), 0.85, 'end events must not erase a same-turn result pulse');
+  t.mock.timers.tick(90); assert.equal(levels.at(-1), 0.7);
+  controller.stop();
+  const count = levels.length;
+  t.mock.timers.tick(1000);
+  lateResult({ results: [[{ transcript: '바람을따라' }]] });
+  assert.equal(levels.at(-1), 0);
+  assert.equal(levels.length, count, 'stopped timers and late results cannot animate the meter');
 });

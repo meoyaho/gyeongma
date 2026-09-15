@@ -73,6 +73,19 @@ export class VoiceController {
     pending?.resolve();
     this.onStatus('listening', '음성 인식 확인됨 · 이름을 불러보세요');
   }
+  showRecognitionActivity() {
+    if (!this.mobile || !this.active) return;
+    clearTimeout(this.activityTimer);
+    const generation = this.generation;
+    let step = 0;
+    const levels = [0.85, 0.7, 0.5, 0.32, 0.18, 0.08, 0];
+    const tick = () => {
+      if (!this.active || this.generation !== generation) return;
+      this.onLevel?.(levels[step++]);
+      this.activityTimer = step < levels.length ? setTimeout(tick, 90) : null;
+    };
+    tick();
+  }
   async startMeter(generation) {
     let stream, context;
     try {
@@ -124,13 +137,17 @@ export class VoiceController {
         this.onStatus('checking', `“${this.name}”을 불러주세요. 인식된 말을 확인하고 있어요.`);
       } else this.confirmRecognition();
     };
-    // On mobile these bars indicate speech activity, not measured volume.
-    rec.onspeechstart = () => { if (this.active && this.recognition === rec && this.mobile) this.onLevel?.(0.65); };
-    rec.onspeechend = () => { if (this.active && this.recognition === rec && this.mobile) this.onLevel?.(0); };
+    // Mobile shows short activity pulses, including from actual transcripts:
+    // WebKit may deliver results without delivering speechstart/speechend.
+    rec.onspeechstart = () => { if (this.recognition === rec) this.showRecognitionActivity(); };
+    rec.onspeechend = () => { if (this.active && this.recognition === rec && this.mobile && !this.activityTimer) this.onLevel?.(0); };
     rec.onresult = event => {
       if (this.recognition !== rec || !this.active) return;
       const transcript = Array.from(event.results, r => r[0].transcript).join('');
-      if (transcript.trim() && this.pendingStart) this.confirmRecognition();
+      if (transcript.trim()) {
+        this.showRecognitionActivity();
+        if (this.pendingStart) this.confirmRecognition();
+      }
       const text = transcript.replace(/[^가-힣]/g, '');
       const { count, progress } = analyzeNameProgress(text, this.name);
       const calls = Math.max(0, count - highWater);
@@ -161,7 +178,7 @@ export class VoiceController {
     };
     rec.onend = () => {
       rec.ended = true;
-      if (this.active && this.recognition === rec && this.mobile) this.onLevel?.(0);
+      if (this.active && this.recognition === rec && this.mobile && !this.activityTimer) this.onLevel?.(0);
       if (this.active && this.recognition === rec) this.restart = setTimeout(() => {
         if (this.active && this.recognition === rec) this.resetRecognition();
       }, 180);
@@ -207,6 +224,7 @@ export class VoiceController {
     this.active = false;
     this.awaitingFirstResult = false;
     clearTimeout(this.readyTimer); clearTimeout(this.partialTimer);
+    clearTimeout(this.activityTimer); this.activityTimer = null;
     const pending = this.pendingStart; this.pendingStart = null;
     pending?.reject(error);
     clearTimeout(this.restart); cancelAnimationFrame(this.frame);
