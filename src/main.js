@@ -54,6 +54,7 @@ let currentAppearance = randomAppearance();
 
 document.querySelector('#app').innerHTML = `
   <div id="home-view">
+    <button id="help-button" class="race-button home-help-button" aria-label="게임 방법" aria-haspopup="dialog" aria-controls="help-dialog">?</button>
     <button id="home-sound-button" class="race-button home-sound-button" aria-label="배경음 켜기">${icon('volume')} <span>OFF</span></button>
     <main class="home-main">
       <div class="hero-grid">
@@ -90,11 +91,31 @@ document.querySelector('#app').innerHTML = `
   </section>
   <dialog id="lobby-dialog" class="modal" aria-labelledby="lobby-title"><div class="modal-scroll"><h2 id="lobby-title">마이크 설정</h2><p id="lobby-description"></p><div id="invite-area" class="hidden"><label for="invite-link">초대 링크</label><div class="invite-link-row"><input id="invite-link" readonly/><button id="copy-link" class="button secondary">${icon('link')} 복사</button></div></div><div id="lobby-players" class="lobby-players"></div>${browserHelp('copy-lobby-browser-url')}<div class="mic-test"><div><span class="mic-test-icon">${icon('mic')}</span><div><b id="mic-title">마이크를 연결해주세요</b><p id="mic-description"></p></div></div><div class="mic-meter"><i id="mic-meter-fill"></i></div>${voiceEnvironment.mobile ? '' : '<small class="meter-caption">마이크 음량</small>'}<p id="mic-transcript" aria-live="polite"></p></div><p class="privacy-note">음성은 브라우저 인식 서비스에서 처리될 수 있습니다.</p><div id="lobby-error" class="inline-error hidden" role="alert"></div><button id="connect-mic" class="button primary full-width">${icon('mic')} 마이크 연결하기</button><button id="start-race" class="button primary full-width hidden">${icon('flag')} 경주 시작하기 ${icon('arrow')}</button><button id="practice-button" class="practice-button">키보드로 체험 ${icon('arrow')}</button><p id="lobby-wait" class="lobby-wait"></p></div></dialog>
   <dialog id="result-dialog" class="modal result-modal"><div class="modal-scroll"><div class="result-icon">${icon('trophy')}</div><h2 id="result-title">경주 결과</h2><p id="result-description"></p><div class="result-stats"><div><span>완주 기록</span><b id="result-time"></b></div><div><span>인식 횟수</span><b id="result-calls"></b></div></div><div id="result-board"></div><p id="result-wait" class="lobby-wait"></p><button id="replay" class="button primary full-width">다시 경주 ${icon('arrow')}</button><button id="result-home" class="button secondary full-width">처음으로</button></div></dialog>
+  <dialog id="help-dialog" class="modal help-dialog" aria-labelledby="help-title">
+    <div class="help-heading"><h2 id="help-title">게임 방법</h2><button id="close-help" class="icon-button help-close" aria-label="게임 방법 닫기" autofocus>×</button></div>
+    <div class="modal-scroll">
+      <p class="help-intro">내 말의 이름을 불러 결승선까지 달려보세요!</p>
+      <ol class="help-steps">
+        <li><h3>말 이름을 지어주세요</h3><p>이름 입력칸에 <strong>한글 4~6글자</strong>를 넣고 <strong>확인</strong>을 눌러주세요. 띄어쓰기, 숫자, 영문, 기호는 사용할 수 없어요.</p></li>
+        <li><h3>나만의 이름으로 준비해요</h3><p>마사회에 등록된 말 이름, 유명인의 이름·별칭, 회사·상품명, 광고성 이름과 부적절한 표현은 사용할 수 없어요.</p></li>
+        <li><h3>마이크를 연결해주세요</h3><p><strong>마이크 연결하기</strong>를 누르고 권한을 허용한 뒤, 이름을 불러 인식되는지 확인해주세요. 준비가 되면 <strong>경주 시작하기</strong>를 눌러요.</p></li>
+        <li><h3>정확하게, 빠르게 불러주세요!</h3><p>내 말의 이름을 <strong>끝까지 정확하고 빠르게 반복해서 부를수록</strong> 속도가 올라가요. <strong>${RACE_DISTANCE}m 결승선에 먼저 도착하면 승리!</strong></p></li>
+      </ol>
+      <div class="help-note"><p><strong>혼자 달리기</strong>는 AI 7마리와, <strong>친구와 달리기</strong>는 초대 링크로 2~8명이 함께 즐길 수 있어요.</p><p>마이크를 쓰기 어려우면 <strong>키보드로 체험</strong>을 선택하고 이름을 따라 입력해보세요.</p></div>
+    </div>
+  </dialog>
   <div id="toast" class="toast hidden" role="status"></div>
 `;
 
 const $ = id => document.getElementById(id);
 const show = (id, visible = true) => $(id).classList.toggle('hidden', !visible);
+$('help-button').onclick = () => $('help-dialog').showModal();
+$('close-help').onclick = () => $('help-dialog').close();
+$('help-dialog').addEventListener('click', event => {
+  if (event.target !== $('help-dialog')) return;
+  const bounds = $('help-dialog').getBoundingClientRect();
+  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) $('help-dialog').close();
+});
 let scene = null;
 function toast(message) { $('toast').textContent = message; show('toast'); clearTimeout(toast.timer); toast.timer = setTimeout(() => show('toast', false), 4000); }
 function lobbyError(message = '') { $('lobby-error').textContent = message; show('lobby-error', !!message); }
@@ -381,6 +402,7 @@ $('practice-button').onclick = () => { voice.stop(); inputMode = 'keyboard'; mic
 $('start-race').onclick = () => { send({ type: 'start' }); lobbyError(); };
 $('copy-link').onclick = async () => { try { await navigator.clipboard.writeText($('invite-link').value); $('copy-link').textContent = '복사 완료 ✓'; setTimeout(() => { $('copy-link').innerHTML = `${icon('link')} 복사`; }, 2000); } catch { $('invite-link').select(); toast('링크를 선택했어요. 복사해서 친구에게 보내주세요.'); } };
 function startView() {
+  $('help-dialog').close();
   $('home-view').classList.remove('lobby-open');
   $('home-view').style.removeProperty('min-height');
   view = 'race'; $('lobby-dialog').close(); show('home-view', false); show('race-view');
@@ -423,6 +445,7 @@ function renderResult(sorted, me, rank) {
   $('replay').disabled = room.host !== myId || room.phase !== 'finished';
 }
 function resetHome() {
+  $('help-dialog').close();
   $('home-view').classList.remove('lobby-open');
   $('home-view').style.removeProperty('min-height');
   voice.stop(); micReady = false; voiceBusy = false; localCalls = 0; room = null; myId = null; view = 'home'; lastLobbySignature = '';
