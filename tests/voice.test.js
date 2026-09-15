@@ -240,6 +240,39 @@ function mockAudioSession() {
   return events;
 }
 
+test('iOS reconnect releases its silent source without closing shared music context', async t => {
+  const { controller, recognizers } = setupVoice(t);
+  const events = mockAudioSession();
+  const shared = new window.AudioContext();
+  controller.getAudioContext = () => shared;
+  for (let i = 0; i < 2; i++) {
+    const start = controller.start('바람을따라');
+    recognizers[i].onstart(); recognizers[i].emit('바람을따라');
+    assert.equal(await start, true);
+    assert.equal(controller.sessionContext, shared);
+    controller.stop();
+  }
+  assert.equal(events.filter(e => e === 'context').length, 1);
+  assert.equal(events.filter(e => e === 'silent-stop').length, 2);
+  assert.equal(events.includes('close'), false);
+  assert.equal(navigator.audioSession.type, 'auto');
+});
+
+test('iOS delegates audio-session ownership and releases it on a service error', async t => {
+  const { controller, recognizers } = setupVoice(t);
+  mockAudioSession();
+  let acquired = 0, released = 0;
+  controller.acquireAudioSession = () => { acquired++; return () => released++; };
+  const start = controller.start('바람을따라');
+  const rejection = assert.rejects(start, /음성 인식 서비스/);
+  assert.equal(acquired, 1);
+  assert.equal(navigator.audioSession.type, 'auto', 'shared manager owns the category');
+  recognizers[0].onerror({ error: 'service-not-allowed' });
+  await rejection;
+  controller.stop();
+  assert.equal(released, 1);
+});
+
 test('iOS activates a silent audio session from the mic tap independently of music', async t => {
   const { controller, recognizers, captures } = setupVoice(t);
   const events = mockAudioSession();

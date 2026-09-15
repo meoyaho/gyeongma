@@ -3,6 +3,7 @@ import './interface.css';
 import { validateName, suggestions, MIN_SPEED, MAX_SPEED, RACE_DISTANCE } from '../shared/rules.js';
 import { RaceScene } from './scene.js';
 import { VoiceController, getVoiceEnvironment } from './voice.js';
+import { GameAudio } from './audio.js';
 import { horseAppearance } from '../shared/horse-appearances.js';
 
 const icons = {
@@ -27,40 +28,24 @@ const websocketUrl = `${serverOrigin.replace(/^http/, 'ws')}/ws`;
 const voiceEnvironment = getVoiceEnvironment();
 const externalBrowser = voiceEnvironment.ios ? 'Safari' : 'Chrome';
 const browserHelp = id => voiceEnvironment.instagram ? `<div class="browser-help"><p>인스타그램에서는 음성 인식이 제한될 수 있어요. 주소를 복사해 <b>${externalBrowser} 앱</b>에서 열어주세요.</p><input id="${id}-value" class="browser-url" aria-label="${externalBrowser}에서 열 주소" value="${escape(location.href)}" readonly/><button id="${id}" class="button secondary full-width">${icon('link')} 주소 복사</button></div>` : '';
-let room = null, myId = null, ws = null, activeName = '', mode = 'solo', inputMode = 'voice', micReady = false, voiceBusy = false, view = 'home', localCalls = 0, keyboardCallLocked = false, keyboardComposing = false, sound = false, audioContext, lastHoof = 0;
+let room = null, myId = null, ws = null, activeName = '', mode = 'solo', inputMode = 'voice', micReady = false, voiceBusy = false, view = 'home', localCalls = 0, keyboardCallLocked = false, keyboardComposing = false, sound = false, lastHoof = 0;
 const musicSources = {
   lobby: encodeURI(`${import.meta.env.BASE_URL}대기실.mp3`),
   racing: encodeURI(`${import.meta.env.BASE_URL}경주.mp3`),
 };
-// Reuse the player unlocked by the sound-button click when the race starts.
-const music = new Audio();
-music.loop = true;
-music.volume = 0.5;
-music.preload = 'auto';
-let musicTrack = null, musicRequest = 0;
-function stopMusic() {
-  musicRequest++;
-  musicTrack = null;
-  music.pause();
-}
-function syncMusic(retry = false) {
-  // Changing play/pause during WebKit speech capture can interrupt recognition.
-  // Keep an existing player running silently when the user switches sound OFF.
-  if (voiceEnvironment.ios && voice.active && musicTrack) {
-    music.muted = !sound;
-    if (!sound) return;
-  } else music.muted = false;
-  const track = !sound || room?.phase === 'finished' ? null : room?.phase === 'racing' ? 'racing' : 'lobby';
-  if (!track) { if (musicTrack) stopMusic(); return; }
-  if (track === musicTrack && !retry) return;
-  musicTrack = track;
-  if (music.getAttribute('src') !== musicSources[track]) music.src = musicSources[track];
-  const request = ++musicRequest;
-  music.play().catch(error => {
-    if (request !== musicRequest || error.name === 'AbortError') return;
+const audio = new GameAudio({
+  sources: musicSources,
+  shouldResume: () => sound || voice.active,
+  onError: error => {
     console.warn('배경음 재생 실패:', error);
     toast('음악을 재생하지 못했어요. 사운드를 껐다가 다시 켜주세요.');
-  });
+  },
+});
+function syncMusic(retry = false) {
+  // Once unlocked, keep the loop running at zero gain when sound is OFF.
+  if (!audio.context && !sound) return;
+  const track = room?.phase === 'finished' ? null : room?.phase === 'racing' ? 'racing' : 'lobby';
+  void audio.setTrack(track, retry);
 }
 let timeOffset = 0, lastSuggestion = '', lastLobbySignature = '', confirmedName = '';
 let nameValidationRevision = 0, nameValidationController = null, reservationToken = null;
@@ -211,6 +196,8 @@ function paintNameProgress(progress, completed = false) {
 }
 
 const voice = new VoiceController({
+  getAudioContext: () => audio.getContext(),
+  acquireAudioSession: () => audio.acquireCaptureSession(),
   onCalls: count => {
     if (room?.phase === 'racing') send({ type: 'call', count });
     else if (room?.phase === 'lobby') { localCalls += count; $('mic-transcript').textContent = `이름 ${localCalls}회 인식`; }
@@ -488,11 +475,8 @@ document.addEventListener('keydown', () => {
 });
 function toggleSound() {
   sound = !sound;
-  syncMusic(true); // Start playback directly within the user gesture.
-  if (sound) {
-    audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
-    audioContext.resume().catch(error => console.warn('효과음 재생 실패:', error));
-  }
+  audio.setEnabled(sound);
+  syncMusic(true);
   $('sound-button').innerHTML = `${icon('volume')} <span>${sound ? 'ON' : 'OFF'}</span>`; $('sound-button').setAttribute('aria-label', `사운드 ${sound ? '끄기' : '켜기'}`);
   $('home-sound-button').innerHTML = `${icon('volume')} <span>${sound ? 'ON' : 'OFF'}</span>`; $('home-sound-button').setAttribute('aria-label', `배경음 ${sound ? '끄기' : '켜기'}`);
 }
@@ -504,11 +488,9 @@ function frame() {
     if (room.phase === 'countdown') $('countdown-number').textContent = Math.max(1, Math.ceil((room.startAt - Date.now() - timeOffset) / 1000));
     const seconds = me?.finishTime ?? Math.max(0, (Date.now() + timeOffset - room.startAt) / 1000);
     $('race-time').textContent = seconds.toFixed(2).padStart(5, '0');
-    if (sound && audioContext && room.phase === 'racing' && !me?.finishTime && performance.now() - lastHoof > 270 - (me?.speed || 5) * 6) {
+    if (sound && audio.context && room.phase === 'racing' && !me?.finishTime && performance.now() - lastHoof > 270 - (me?.speed || 5) * 6) {
       lastHoof = performance.now();
-      const osc = audioContext.createOscillator(), gain = audioContext.createGain();
-      osc.type = 'triangle'; osc.frequency.setValueAtTime(135, audioContext.currentTime); osc.frequency.exponentialRampToValueAtTime(45, audioContext.currentTime + .06);
-      gain.gain.setValueAtTime(.1, audioContext.currentTime); gain.gain.exponentialRampToValueAtTime(.001, audioContext.currentTime + .08); osc.connect(gain); gain.connect(audioContext.destination); osc.start(); osc.stop(audioContext.currentTime + .09);
+      audio.hoof();
     }
   }
   requestAnimationFrame(frame);
@@ -523,4 +505,7 @@ async function reserveInvite() {
 }
 reserveInvite();
 window.addEventListener('resize', updateLobbyPageHeight);
-window.addEventListener('pagehide', () => { stopMusic(); voice.stop(); ws?.close(); });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && (sound || voice.active)) void audio.resume();
+});
+window.addEventListener('pagehide', () => { voice.stop(); audio.dispose(); ws?.close(); });

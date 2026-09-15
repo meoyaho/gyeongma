@@ -7,8 +7,8 @@ export function getVoiceEnvironment(info = navigator) {
 }
 
 export class VoiceController {
-  constructor({ onCalls, onStatus, onTranscript, onLevel, onProgress }) {
-    Object.assign(this, { onCalls, onStatus, onTranscript, onLevel, onProgress });
+  constructor({ onCalls, onStatus, onTranscript, onLevel, onProgress, getAudioContext, acquireAudioSession }) {
+    Object.assign(this, { onCalls, onStatus, onTranscript, onLevel, onProgress, getAudioContext, acquireAudioSession });
     this.active = false;
     this.name = '';
   }
@@ -49,14 +49,17 @@ export class VoiceController {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (!AudioContext) return;
     try {
-      if (navigator.audioSession) {
+      if (this.acquireAudioSession) {
+        this.releaseAudioSession = this.acquireAudioSession();
+      } else if (navigator.audioSession) {
         this.previousAudioSessionType = navigator.audioSession.type;
         navigator.audioSession.type = 'play-and-record';
       }
     } catch { this.previousAudioSessionType = undefined; }
-    const context = this.sessionContext = new AudioContext();
+    this.ownsSessionContext = !this.getAudioContext;
+    const context = this.sessionContext = this.getAudioContext ? this.getAudioContext() : new AudioContext();
     // A silent, running source keeps WebKit's audio unit active between speech
-    // sessions. It is separate from the user's music and never records audio.
+    // sessions, using the same context as music without recording audio.
     const source = this.sessionSource = context.createConstantSource();
     source.offset.value = 0;
     source.connect(context.destination);
@@ -93,12 +96,14 @@ export class VoiceController {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       if (this.generation !== generation || !this.active) { stream.getTracks().forEach(t => t.stop()); return; }
       this.stream = stream;
-      context = this.context = new (window.AudioContext || window.webkitAudioContext)();
+      this.ownsMeterContext = !this.getAudioContext;
+      context = this.context = this.getAudioContext ? this.getAudioContext() : new (window.AudioContext || window.webkitAudioContext)();
       await context.resume();
       if (this.generation !== generation || !this.active) return;
       const analyser = this.analyser = context.createAnalyser();
       analyser.fftSize = 256;
-      context.createMediaStreamSource(stream).connect(analyser);
+      this.meterSource = context.createMediaStreamSource(stream);
+      this.meterSource.connect(analyser);
       const data = new Uint8Array(analyser.frequencyBinCount);
       const meter = () => {
         if (!this.active || this.generation !== generation) return;
@@ -110,7 +115,9 @@ export class VoiceController {
     } catch {
       if (this.generation !== generation) return;
       stream?.getTracks().forEach(t => t.stop());
-      context?.close().catch(() => {});
+      this.meterSource?.disconnect?.();
+      this.meterSource = null;
+      if (this.ownsMeterContext) context?.close().catch(() => {});
       this.stream = this.context = this.analyser = null;
       this.onLevel?.(0);
     }
@@ -230,10 +237,15 @@ export class VoiceController {
     clearTimeout(this.restart); cancelAnimationFrame(this.frame);
     if (this.recognition) { this.recognition.onstart = null; this.recognition.onend = null; this.recognition.onerror = null; this.recognition.onresult = null; this.recognition.onspeechstart = this.recognition.onspeechend = null; try { this.recognition.abort(); } catch {} }
     this.stream?.getTracks().forEach(t => t.stop());
-    this.context?.close().catch(() => {});
+    this.meterSource?.disconnect?.();
+    this.meterSource = null;
+    this.analyser?.disconnect?.();
+    if (this.ownsMeterContext) this.context?.close().catch(() => {});
     try { this.sessionSource?.stop(); this.sessionSource?.disconnect(); } catch {}
-    this.sessionContext?.close().catch(() => {});
+    if (this.ownsSessionContext) this.sessionContext?.close().catch(() => {});
     this.sessionSource = this.sessionContext = null;
+    this.releaseAudioSession?.();
+    this.releaseAudioSession = null;
     if (this.previousAudioSessionType !== undefined) {
       try { navigator.audioSession.type = this.previousAudioSessionType; } catch {}
       this.previousAudioSessionType = undefined;
