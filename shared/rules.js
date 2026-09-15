@@ -1,5 +1,5 @@
 // Only structural checks run locally. Semantic moderation is server-side.
-export const suggestions = ['바람을따라','우당탕질주','구름콩콩이','당근이좋아','새벽콩콩이','천둥발굽','오늘도전력','달빛을달려'];
+export const suggestions = ['바람을따라','우당탕질주','구름콩콩이','당근이좋아','새벽콩콩이','천둥발굽','달빛을달려'];
 export function validateName(name) {
   if (typeof name !== 'string' || !name) return { ok: false, message: '말 이름을 입력해주세요.' };
   if (/\s/.test(name)) return { ok: false, message: '띄어쓰기는 사용할 수 없습니다.' };
