@@ -12,6 +12,7 @@ import { getRankedAiHorseNames } from './kra-rankings.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const app = express();
+const LOBBY_GRACE_MS = 60_000;
 const rooms = new Map();
 const roomWrites = new Map();
 const frontendOrigins = new Set((process.env.FRONTEND_ORIGINS || 'https://meoyaho.github.io').split(',').map(origin => origin.trim()).filter(Boolean));
@@ -113,24 +114,38 @@ function snapshot(room, now = Date.now()) {
 }
 function broadcast(room) { const data = snapshot(room); room.players.forEach(p => send(p.ws, data)); }
 function player(ws, name, lane, appearance, token = null) { return { id: randomUUID(), resumeHash: token ? resumeHash(token) : null, name, lane, appearance, ready: false, bot: false, connected: true, reserved: !name, distance: 0, speed: MIN_SPEED, calls: [], totalCalls: 0, finishTime: null, ws, token }; }
+function removePlayer(room, playerId) {
+  room.players = room.players.filter(p => p.id !== playerId);
+  if (!room.players.some(p => !p.bot)) { rooms.delete(room.code); removePersisted(room.code); return; }
+  if (room.host === playerId) room.host = room.players.find(p => !p.bot)?.id;
+  if (room.phase === 'lobby') persist(room);
+  broadcast(room);
+}
+// A deliberate "leave" (user clicked out) removes the seat immediately.
 function leave(ws) {
   ws.joinGeneration = (ws.joinGeneration || 0) + 1;
   ws.pendingJoin = false;
   const room = rooms.get(ws.roomCode);
+  ws.roomCode = null;
   if (!room) return;
   const p = room.players.find(p => p.id === ws.playerId);
-  if (p && p.ws === ws) {
-    if (room.phase === 'lobby') room.players = room.players.filter(p => p.id !== ws.playerId);
-    else { p.connected = false; p.ws = null; p.calls = []; p.speed = 0; }
-  }
-  const live = room.players.filter(p => !p.bot && p.connected);
-  if (!room.players.some(p => !p.bot)) { rooms.delete(room.code); removePersisted(room.code); }
-  else {
-    if (room.host === ws.playerId) room.host = live[0]?.id || room.players.find(p => !p.bot)?.id;
-    if (room.phase === 'lobby') persist(room);
-    broadcast(room);
-  }
+  if (p && p.ws === ws) removePlayer(room, p.id);
+}
+// A network drop (tab backgrounded to share a link, brief signal loss, etc.) keeps the seat
+// for a grace window so the player can resume with their token instead of losing the room.
+function disconnect(ws) {
+  ws.joinGeneration = (ws.joinGeneration || 0) + 1;
+  ws.pendingJoin = false;
+  const room = rooms.get(ws.roomCode);
   ws.roomCode = null;
+  if (!room) return;
+  const p = room.players.find(p => p.id === ws.playerId);
+  if (!p || p.ws !== ws) return;
+  p.connected = false; p.ws = null; p.calls = []; p.speed = 0;
+  if (room.phase === 'lobby') p.disconnectedAt = Date.now();
+  if (room.host === p.id) { const live = room.players.find(other => !other.bot && other.connected); if (live) room.host = live.id; }
+  if (room.phase === 'lobby') persist(room);
+  broadcast(room);
 }
 wss.on('connection', (ws, req) => {
   // Browsers may only connect from this host; allow non-browser test clients.
@@ -180,14 +195,25 @@ wss.on('connection', (ws, req) => {
         if (!valid.ok) return fail(valid.message);
         const problem = joinProblem(room, msg.name, p.id);
         if (problem) return fail(problem.message);
-        const tokenHash = p.resumeHash;
-        p.name = msg.name; p.reserved = false; p.resumeHash = null;
+        p.name = msg.name; p.reserved = false;
         try { await persist(room); }
         catch {
-          p.name = ''; p.reserved = true; p.resumeHash = tokenHash;
+          p.name = ''; p.reserved = true;
           return fail('이름을 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
         }
-        send(ws, { type: 'joined', id: p.id, code: room.code, name: p.name, mode: room.mode });
+        send(ws, { type: 'joined', id: p.id, code: room.code, name: p.name, mode: room.mode, resumeToken: msg.reservationToken });
+        broadcast(room);
+        return;
+      }
+      if (msg.type === 'resume') {
+        if (ws.roomCode) return fail('이미 경주에 참여 중이에요.');
+        const room = rooms.get(msg.code);
+        const p = room?.players.find(player => player.id === msg.playerId);
+        if (!room || !p || p.connected || !p.resumeHash || p.resumeHash !== resumeHash(msg.resumeToken)) return fail('대기실을 다시 불러오지 못했어요. 새로고침해주세요.');
+        p.ws = ws; p.connected = true; delete p.disconnectedAt;
+        ws.roomCode = room.code; ws.playerId = p.id;
+        send(ws, { type: 'joined', id: p.id, code: room.code, name: p.name, mode: room.mode, resumeToken: msg.resumeToken });
+        if (room.phase === 'lobby') persist(room);
         broadcast(room);
         return;
       }
@@ -214,7 +240,8 @@ wss.on('connection', (ws, req) => {
           if (problem) return fail(problem.message);
         }
         const lane = nextLane(room);
-        const p = player(ws, msg.name, lane, nextAppearance(room, msg.type === 'create' ? msg.appearance : undefined));
+        const resumeToken = randomBytes(24).toString('base64url');
+        const p = player(ws, msg.name, lane, nextAppearance(room, msg.type === 'create' ? msg.appearance : undefined), resumeToken);
         room.players.push(p);
         if (!room.host) room.host = p.id;
         ws.roomCode = room.code; ws.playerId = p.id;
@@ -230,7 +257,7 @@ wss.on('connection', (ws, req) => {
             return fail('대기실을 저장하지 못했어요. 잠시 후 다시 시도해주세요.');
           }
         }
-        send(ws, { type: 'joined', id: p.id, code: room.code, name: p.name, mode: room.mode });
+        send(ws, { type: 'joined', id: p.id, code: room.code, name: p.name, mode: room.mode, resumeToken });
         delete p.token;
         broadcast(room);
         return;
@@ -264,13 +291,17 @@ wss.on('connection', (ws, req) => {
       }
     } catch { send(ws, { type: 'error', message: '요청을 처리하지 못했어요.' }); }
   });
-  ws.on('close', () => leave(ws));
+  ws.on('close', () => disconnect(ws));
   ws.on('error', () => {});
 });
 const ticker = setInterval(() => {
   const now = Date.now();
   for (const room of rooms.values()) {
     if (now - room.createdAt > 30 * 60 * 1000) { room.players.forEach(p => { send(p.ws, { type: 'expired' }); p.ws?.close(); }); rooms.delete(room.code); removePersisted(room.code); continue; }
+    if (room.phase === 'lobby') {
+      const stale = room.players.filter(p => !p.bot && !p.connected && p.disconnectedAt && now - p.disconnectedAt > LOBBY_GRACE_MS);
+      if (stale.length) { stale.forEach(p => removePlayer(room, p.id)); if (!rooms.has(room.code)) continue; }
+    }
     if (room.phase === 'countdown' && now >= room.startAt) room.phase = 'racing';
     if (room.phase !== 'racing') continue;
     // Integrate elapsed wall time: event-loop delay never changes race length.

@@ -49,6 +49,7 @@ function syncMusic(retry = false) {
 }
 let timeOffset = 0, lastSuggestion = '', lastLobbySignature = '', confirmedName = '';
 let nameValidationRevision = 0, nameValidationController = null, reservationToken = null;
+let myRoomCode = null, resumeToken = null, resuming = false, reconnectAttempts = 0, reconnectTimer = null;
 const randomAppearance = () => crypto.getRandomValues(new Uint32Array(1))[0] % 8;
 let currentAppearance = randomAppearance();
 
@@ -267,10 +268,34 @@ async function connect() {
     socket.onclose = () => {
       clearTimeout(timeout);
       if (ws !== socket) return;
-      if (room) { resetHome(); toast('서버 연결이 끊겼어요. 새 대기실을 만들어 다시 참여해주세요.'); }
+      if (room && myRoomCode && resumeToken) {
+        if ($('lobby-dialog').open) lobbyError('연결이 끊겼어요. 재연결 시도 중…');
+        reconnectAttempts = 0;
+        attemptReconnect();
+      } else if (room) { resetHome(); toast('서버 연결이 끊겼어요. 새 대기실을 만들어 다시 참여해주세요.'); }
     };
   });
 }
+async function attemptReconnect() {
+  if (!resumeToken || !myRoomCode) return;
+  resuming = true;
+  try {
+    await connect();
+    send({ type: 'resume', code: myRoomCode, playerId: myId, resumeToken });
+  } catch {
+    reconnectAttempts++;
+    if (reconnectAttempts <= 6) reconnectTimer = setTimeout(attemptReconnect, Math.min(1000 * 2 ** reconnectAttempts, 8000));
+    else { resetHome(); toast('대기실에 다시 연결하지 못했어요. 새로고침해서 다시 시도해주세요.'); }
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (room && myRoomCode && resumeToken && ws?.readyState !== WebSocket.OPEN && !resuming) {
+    clearTimeout(reconnectTimer);
+    reconnectAttempts = 0;
+    attemptReconnect();
+  }
+});
 async function openRoom(selectedMode, code) {
   if (!confirmedName || confirmedName !== $('horse-name').value) { $('confirm-name').focus(); return false; }
   if (openRoom.busy) return false;
@@ -292,7 +317,9 @@ function receive(data) {
     return;
   }
   if (data.type === 'joined') {
-    myId = data.id;
+    resuming = false; clearTimeout(reconnectTimer); reconnectAttempts = 0;
+    myId = data.id; myRoomCode = data.code;
+    if (data.resumeToken) resumeToken = data.resumeToken;
     if (data.name) {
       activeName = data.name;
       confirmedName = data.name;
@@ -303,11 +330,13 @@ function receive(data) {
       mode = 'friends'; inviteCode = data.code; reservationToken = null;
       const url = new URL(location.href); url.searchParams.set('room', data.code); history.replaceState(null, '', url);
     }
+    if ($('lobby-dialog').open) lobbyError();
     return;
   }
   if (data.type === 'expired') { resetHome(); toast('대기실이 만료됐어요. 새 경주를 만들어주세요.'); return; }
   if (data.type === 'error') {
-    if ($('lobby-dialog').open) lobbyError(data.message);
+    if (resuming) { resetHome(); toast(data.message); }
+    else if ($('lobby-dialog').open) lobbyError(data.message);
     else if (inviteCode && !room && !reservationToken) {
       inviteCode = null;
       history.replaceState(null, '', location.pathname);
@@ -459,6 +488,7 @@ function resetHome() {
   $('home-view').classList.remove('lobby-open');
   $('home-view').style.removeProperty('min-height');
   voice.stop(); micReady = false; voiceBusy = false; localCalls = 0; room = null; myId = null; view = 'home'; lastLobbySignature = '';
+  myRoomCode = null; resumeToken = null; resuming = false; clearTimeout(reconnectTimer);
   syncMusic();
   $('lobby-dialog').close(); $('result-dialog').close(); show('race-view', false); show('home-view');
   scene?.setMode('home'); clearNameProgress(); lobbyError();
@@ -469,7 +499,8 @@ function resetHome() {
 }
 function leaveRoom() {
   send({ type: 'leave' });
-  inviteCode = null; reservationToken = null; history.replaceState(null, '', location.pathname);
+  inviteCode = null; reservationToken = null;
+  history.replaceState(null, '', location.pathname);
   resetHome();
 }
 $('leave-race').onclick = leaveRoom; $('result-home').onclick = leaveRoom;

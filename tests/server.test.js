@@ -51,13 +51,14 @@ test('solo adds 7 AI; enforces readiness; caps acceleration; silence decays', as
   const decayed = await c.wait(d => d.phase === 'racing' && d.players.find(p => p.id === joined.id)?.totalCalls === 4 && d.players.find(p => p.id === joined.id)?.speed === 5);
   assert.ok(decayed.players[0].distance > 20);
 });
-test('friends room supports 8 and removes disconnected players immediately', async t => {
+test('friends room supports 8, keeps a dropped seat during the reconnect grace window, and supports resume', async t => {
   const clients = Array.from({ length: 9 }, client); t.after(() => clients.forEach(c => c.socket.close())); await Promise.all(clients.map(c => c.ready));
   const [host, ...guests] = clients;
   host.send({ type: 'create', mode: 'friends', name: '바람을따라', appearance: 3 }); const joined = await host.wait(d => d.type === 'joined');
+  assert.ok(joined.resumeToken, 'a resume token lets the player reclaim its seat after a network drop');
   const lobby = await host.wait(d => d.type === 'state');
   assert.equal(lobby.players.find(p => p.id === joined.id).appearance, 3, 'friends room keeps the preview horse');
-  const names = ['우당탕질주','구름콩콩이','당근이좋아','새벽콩콩이','천둥발굽','달빛을달려','초원의질주'];
+  const names = ['우당탕질주','구름콩콩이','당근이좋아','새벽콩콩이','천둥발굽','달빛을달려','초원의질주','들판을가르며'];
   const invite = await fetch(`${origin}/api/invite/${joined.code}`).then(response => response.json());
   assert.equal(invite.ok, true);
   assert.equal(invite.room.playerCount, 1);
@@ -76,18 +77,31 @@ test('friends room supports 8 and removes disconnected players immediately', asy
   // One-player friend races cannot start.
   host.send({ type: 'ready', ready: true }); host.send({ type: 'start' }); assert.match((await host.wait(d => d.type === 'error')).message, /한 명/);
   for (let i = 0; i < 7; i++) { guests[i].send({ type: 'join', code: joined.code, name: names[i] }); await guests[i].wait(d => d.type === 'joined'); }
+  const guest0Id = (await guests[0].wait(d => d.type === 'joined')).id;
   const full = await host.wait(d => d.type === 'state' && d.players.length === 8); assert.equal(full.players.filter(p => p.bot).length, 0);
-  assert.equal(full.players.some(p => p.resumeHash || p.reservationToken), false, 'reservation credentials are private');
+  assert.equal(full.players.some(p => p.resumeHash || p.reservationToken || p.resumeToken), false, 'reservation credentials are private');
   assert.equal(new Set(full.players.map(p => horseAppearance(p.appearance).src)).size, 8, 'all players receive distinct horse illustrations');
   guests[7].send({ type: 'join', code: joined.code, name: names[7] }); assert.match((await guests[7].wait(d => d.type === 'error')).message, /8명/);
   guests[0].send({ type: 'start' }); assert.match((await guests[0].wait(d => d.type === 'error')).message, /방장/);
   host.clear(); host.send({ type: 'start' }); assert.match((await host.wait(d => d.type === 'error')).message, /준비/);
+  // Dropping the connection (e.g. backgrounding the tab to share the invite link) must not
+  // vacate the seat immediately: host role transfers away, but the seat itself is kept.
   host.socket.close();
-  const transfer = await guests[0].wait(d => d.type === 'state' && d.players.length === 7 && d.host !== joined.id);
-  assert.equal(transfer.host, (await guests[0].wait(d => d.type === 'joined')).id);
+  const afterDrop = await guests[0].wait(d => d.type === 'state' && d.host !== joined.id);
+  assert.equal(afterDrop.players.length, 8, 'the disconnected host keeps its seat during the grace window');
+  assert.equal(afterDrop.players.find(p => p.id === joined.id).connected, false);
+  assert.equal(afterDrop.host, guest0Id, 'host role transfers to a connected player while the seat is held open');
+  // The original host resumes with a fresh connection using its resume token.
+  const resumed = client(); t.after(() => resumed.socket.close()); await resumed.ready;
+  resumed.send({ type: 'resume', code: joined.code, playerId: joined.id, resumeToken: joined.resumeToken });
+  const rejoined = await resumed.wait(d => d.type === 'joined');
+  assert.equal(rejoined.id, joined.id);
+  const afterResume = await resumed.wait(d => d.type === 'state' && d.players.find(p => p.id === joined.id)?.connected);
+  assert.equal(afterResume.players.length, 8, 'resuming reclaims the existing seat instead of creating a duplicate');
+  assert.equal(afterResume.host, guest0Id, 'resuming does not steal host role back');
   const leader = guests[0];
   for (const guest of guests.slice(0, 7)) guest.send({ type: 'ready', ready: true });
-  await leader.wait(d => d.phase === 'lobby' && d.players.length === 7 && d.players.every(p => p.ready));
+  await leader.wait(d => d.phase === 'lobby' && d.players.length === 8 && d.players.every(p => p.ready));
   leader.send({ type: 'start' });
   const starts = await Promise.all(guests.slice(0, 7).map(c => c.wait(d => d.phase === 'countdown')));
   assert.equal(new Set(starts.map(d => d.startAt)).size, 1);
