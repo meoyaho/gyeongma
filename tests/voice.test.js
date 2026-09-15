@@ -34,14 +34,15 @@ test('speech interim/final updates count each name once and release microphone o
   assert.equal(controller.active, false); assert.equal(stopped, 1); assert.equal(closed, 1);
   assert.equal(statuses.at(-1)[0], 'error');
 });
-test('cancelling while microphone permission is pending releases a late stream', async () => {
+test('cancelling while optional meter permission is pending releases a late stream', async () => {
   let resolvePermission, stopped = false;
   navigator.mediaDevices.getUserMedia = () => new Promise(resolve => { resolvePermission = resolve; });
   const controller = new VoiceController({ onCalls() {}, onStatus() {}, onTranscript() {}, onLevel() {} });
-  const start = controller.start('바람을따라');
+  assert.equal(await controller.start('바람을따라'), true);
   controller.stop();
   resolvePermission({ getTracks: () => [{ stop() { stopped = true; } }] });
-  assert.equal(await start, false); assert.equal(stopped, true); assert.equal(controller.active, false);
+  await Promise.resolve();
+  assert.equal(stopped, true); assert.equal(controller.active, false);
 });
 test('a new race discards lobby hypotheses and ignores late events from the old recognizer', async () => {
   navigator.mediaDevices.getUserMedia = async () => ({ getTracks: () => [{ stop() {} }] });
@@ -71,4 +72,116 @@ test('partial attempts expire and cannot be completed by a later suffix', async 
   assert.notEqual(controller.recognition, old);
   controller.recognition.emit(['따라']); assert.deepEqual(calls, []);
   controller.stop();
+});
+
+function setupVoice(t, device = {}) {
+  const previousWindow = globalThis.window, previousNavigator = globalThis.navigator;
+  const recognizers = [], statuses = [], levels = [];
+  let captures = 0;
+  class Recognition {
+    constructor() { recognizers.push(this); }
+    start() { this.started = true; }
+    abort() { this.aborted = true; }
+  }
+  globalThis.window = { isSecureContext: true, webkitSpeechRecognition: Recognition };
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {
+    userAgent: 'iPhone', ...device,
+    mediaDevices: { getUserMedia: async () => { captures++; throw new Error('meter unavailable'); } }
+  } });
+  const controller = new VoiceController({ onCalls() {}, onTranscript() {}, onStatus: (...args) => statuses.push(args), onLevel: level => levels.push(level) });
+  t.after(() => {
+    controller.stop();
+    globalThis.window = previousWindow;
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: previousNavigator });
+  });
+  return { controller, recognizers, statuses, levels, captures: () => captures };
+}
+
+for (const device of [
+  { userAgent: 'Mozilla/5.0 (iPhone) Version/18.0 Mobile Safari/604.1' },
+  { userAgent: 'Mozilla/5.0 (iPhone) CriOS/140.0 Mobile Safari/604.1' },
+  { userAgent: 'Mozilla/5.0 (Linux; Android 15) Chrome/140.0 Mobile Safari/537.36' },
+  { userAgent: 'Mozilla/5.0 (Macintosh) Version/18.0 Safari/605.1.15', platform: 'MacIntel', maxTouchPoints: 5 }
+]) {
+  test(`mobile starts within the tap without a second microphone capture: ${device.userAgent}`, async t => {
+    const { controller, recognizers, levels, captures } = setupVoice(t, device);
+    const start = controller.start('바람을따라');
+    assert.equal(recognizers.length, 1, 'recognition is constructed before yielding the button gesture');
+    const rec = recognizers[0];
+    assert.equal(rec.started, true);
+    rec.onstart();
+    assert.equal(await start, true);
+    assert.equal(captures(), 0, 'mobile never opens a volume-meter capture');
+    rec.onspeechstart(); assert.equal(levels.at(-1), 0.65);
+    rec.onspeechend(); assert.equal(levels.at(-1), 0);
+  });
+}
+
+for (const [code, expected] of [
+  ['not-allowed', /사이트 설정/], ['service-not-allowed', /Siri/],
+  ['audio-capture', /마이크 입력/], ['network', /인터넷 연결/]
+]) {
+  test(`startup preserves the actual ${code} error and allows retry`, async t => {
+    const { controller, recognizers, statuses } = setupVoice(t);
+    const start = controller.start('바람을따라');
+    const rejection = assert.rejects(start, expected);
+    recognizers[0].onerror({ error: code });
+    await rejection;
+    assert.equal(controller.active, false);
+    assert.match(statuses.at(-1)[1], expected);
+    const retry = controller.start('바람을따라');
+    recognizers[1].onstart();
+    assert.equal(await retry, true);
+  });
+}
+
+test('recognition can connect even when optional desktop metering fails', async t => {
+  const { controller, recognizers, captures, statuses } = setupVoice(t, { userAgent: 'Desktop Chrome' });
+  const start = controller.start('바람을따라');
+  recognizers[0].onstart();
+  assert.equal(await start, true);
+  await Promise.resolve();
+  assert.equal(captures(), 1);
+  assert.equal(controller.active, true);
+  assert.equal(statuses.at(-1)[0], 'listening');
+});
+
+test('an early no-speech/end can restart and settle the original connection', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { controller, recognizers } = setupVoice(t);
+  const start = controller.start('바람을따라');
+  recognizers[0].onerror({ error: 'no-speech' });
+  recognizers[0].onend();
+  t.mock.timers.tick(180);
+  assert.equal(recognizers.length, 2);
+  recognizers[1].onstart();
+  assert.equal(await start, true);
+  t.mock.timers.tick(12000);
+  assert.equal(controller.active, true, 'ready clears the original timeout');
+});
+
+test('startup timeout preserves its message even after an early no-speech', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { controller, recognizers } = setupVoice(t);
+  const start = controller.start('바람을따라');
+  const rejection = assert.rejects(start, /연결이 지연/);
+  recognizers[0].onerror({ error: 'no-speech' });
+  t.mock.timers.tick(12000);
+  await rejection;
+  assert.equal(controller.active, false);
+  assert.equal(recognizers[0].aborted, true);
+});
+
+test('cancelled startup and late events cannot stop a new connection', async t => {
+  const { controller, recognizers } = setupVoice(t);
+  const start = controller.start('바람을따라');
+  const rejection = assert.rejects(start, /연결이 종료/);
+  const oldStart = recognizers[0].onstart;
+  controller.stop();
+  const retry = controller.start('바람을따라');
+  oldStart();
+  recognizers[1].onstart();
+  await rejection;
+  assert.equal(await retry, true);
+  assert.equal(controller.active, true);
 });
