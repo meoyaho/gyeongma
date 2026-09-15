@@ -184,7 +184,8 @@ dialog::backdrop { background: #254f4660; backdrop-filter: blur(9px); }
 .boost-readout>span { color: #74917f; letter-spacing: 0; }
 .boost-readout>b { color: #4e876c; }
 .boost-track { width: 100%; }
-.countdown strong { color: #fbfff8; text-shadow: 0 2px 0 #76aa8a, 0 5px 30px #3c715e50; }
+.countdown { width: max-content; max-width: calc(100% - 32px); }
+.countdown strong { white-space: nowrap; color: #fbfff8; text-shadow: 0 2px 0 #76aa8a, 0 5px 30px #3c715e50; }
 
 @media (min-width: 761px) and (max-height: 720px) {
   .hero-grid { padding-top: 85px; padding-bottom: 30px; }
@@ -225,6 +226,7 @@ dialog::backdrop { background: #254f4660; backdrop-filter: blur(9px); }
   .race-title { gap: 2px; padding: 8px 16px; }
   .race-title>span { font-size: 14px; }
   .race-title small { font-size: 8px; }
+  .countdown strong { font-size: clamp(56px, 18vw, 88px); }
   .race-button { font-size: 10px; padding: 10px 12px; }
   .rank-box, .progress-box, .leaderboard { border-radius: 16px; }
   .speed-readout { width: 122px; padding: 9px 15px; border-radius: 18px; }
