@@ -17,7 +17,7 @@ export class VoiceController {
     this.name = name;
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!window.isSecureContext) throw new Error('마이크를 사용하려면 HTTPS 주소 또는 localhost에서 열어주세요.');
-    if (!Recognition) throw new Error('이 브라우저는 한국어 음성 인식을 지원하지 않아요. 아이폰은 Safari, 안드로이드는 Chrome에서 열어주세요.');
+    if (!Recognition) throw new Error('이 브라우저는 한국어 음성 인식을 지원하지 않아요. Safari 또는 Chrome에서 열어주세요.');
     const generation = this.generation;
     // iPadOS can identify itself as a Mac. Mobile recognition owns the mic:
     // a second capture for the volume meter can interrupt that audio session.
@@ -66,7 +66,7 @@ export class VoiceController {
     source.start();
     context.resume().catch(() => {
       if (this.generation !== generation || !this.active) return;
-      const message = '오디오 입력을 시작하지 못했어요. Safari에서 페이지를 새로고침한 뒤 마이크를 다시 연결해주세요.';
+      const message = '오디오 입력을 시작하지 못했어요. 웹 브라우저에서 페이지를 새로고침한 뒤 마이크를 다시 연결해주세요.';
       this.stop(new Error(message)); this.onStatus('error', message);
     });
   }
@@ -137,7 +137,7 @@ export class VoiceController {
           this.awaitingFirstResult = true;
           clearTimeout(this.readyTimer);
           this.readyTimer = setTimeout(() => {
-            const message = `아직 인식된 말이 없어요. 마이크를 다시 연결하고 이름을 불러주세요. ${this.ios ? '계속 반응이 없으면 Safari에서 새로고침하고 설정의 받아쓰기를 확인해주세요.' : '계속 반응이 없으면 Chrome에서 새로고침하고 마이크 권한과 인터넷 연결을 확인해주세요.'}`;
+            const message = '아직 인식된 말이 없어요. 마이크를 다시 연결하고 이름을 불러주세요. 계속 반응이 없으면 Safari 또는 Chrome에서 새로고침하고 마이크 권한과 인터넷 연결을 확인해주세요.';
             this.stop(new Error(message)); this.onStatus('error', message);
           }, 15000);
         }
@@ -174,8 +174,8 @@ export class VoiceController {
       const messages = {
         'not-allowed': '음성 인식 권한이 차단됐어요. 브라우저의 사이트 설정에서 마이크를 허용한 뒤 다시 눌러주세요.',
         'service-not-allowed': this.instagram
-          ? `인스타그램 안에서는 음성 인식 서비스가 허용되지 않았어요. 주소를 복사해 ${this.ios ? 'Safari' : 'Chrome'} 앱에서 열어주세요.`
-          : '음성 인식 서비스가 허용되지 않았어요. 아이폰은 Safari 앱에서 열고 설정의 Siri 또는 받아쓰기를 확인해주세요. 안드로이드는 Chrome 앱에서 열어주세요.',
+          ? '인스타그램 안에서는 음성 인식 서비스가 허용되지 않았어요. 주소를 복사해 Safari 또는 Chrome 앱에서 열어주세요.'
+          : '음성 인식 서비스가 허용되지 않았어요. Safari 또는 Chrome 앱에서 열고 마이크 권한을 확인해주세요.',
         'audio-capture': '마이크 입력을 시작하지 못했어요. 통화나 다른 앱의 마이크 사용을 종료한 뒤 다시 연결해주세요.',
         network: '음성 인식 서비스에 연결하지 못했어요. 인터넷 연결을 확인하고 다시 시도해주세요.',
         'language-not-supported': '이 브라우저의 음성 인식 서비스가 한국어를 지원하지 않아요. 다른 브라우저에서 다시 시도해주세요.'

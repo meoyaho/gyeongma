@@ -26,7 +26,7 @@ const serverOrigin = (import.meta.env.VITE_SERVER_ORIGIN || location.origin).rep
 const apiUrl = path => `${serverOrigin}${path}`;
 const websocketUrl = `${serverOrigin.replace(/^http/, 'ws')}/ws`;
 const voiceEnvironment = getVoiceEnvironment();
-const externalBrowser = voiceEnvironment.ios ? 'Safari' : 'Chrome';
+const externalBrowser = 'Safari 또는 Chrome';
 const browserHelp = id => voiceEnvironment.instagram ? `<div class="browser-help"><p>인스타그램에서는 음성 인식이 제한될 수 있어요. 주소를 복사해 <b>${externalBrowser} 앱</b>에서 열어주세요.</p><input id="${id}-value" class="browser-url" aria-label="${externalBrowser}에서 열 주소" value="${escape(location.href)}" readonly/><button id="${id}" class="button secondary full-width">${icon('link')} 주소 복사</button></div>` : '';
 let room = null, myId = null, ws = null, activeName = '', mode = 'solo', inputMode = 'voice', micReady = false, voiceBusy = false, view = 'home', localCalls = 0, keyboardCallLocked = false, keyboardComposing = false, sound = false, lastHoof = 0;
 const musicSources = {

@@ -192,7 +192,7 @@ test('cancelled startup and late events cannot stop a new connection', async t =
 test('Instagram service refusal gives external-browser guidance without blaming Siri', async t => {
   const { controller, recognizers } = setupVoice(t, { userAgent: 'Mozilla/5.0 (iPhone) Instagram 400.0' });
   const start = controller.start('바람을따라');
-  const rejection = assert.rejects(start, error => /인스타그램.*주소를 복사해 Safari/.test(error.message) && !error.message.includes('Siri'));
+  const rejection = assert.rejects(start, error => /인스타그램.*주소를 복사해 Safari 또는 Chrome/.test(error.message) && !error.message.includes('Siri'));
   recognizers[0].onerror({ error: 'service-not-allowed' });
   await rejection;
 });
