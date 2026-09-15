@@ -2,7 +2,7 @@ import './style.css';
 import './interface.css';
 import { validateName, suggestions, MIN_SPEED, MAX_SPEED, RACE_DISTANCE } from '../shared/rules.js';
 import { RaceScene } from './scene.js';
-import { VoiceController } from './voice.js';
+import { VoiceController, getVoiceEnvironment } from './voice.js';
 import { horseAppearance } from '../shared/horse-appearances.js';
 
 const icons = {
@@ -24,6 +24,9 @@ let inviteCode = new URL(location.href).searchParams.get('room')?.toUpperCase();
 const serverOrigin = (import.meta.env.VITE_SERVER_ORIGIN || location.origin).replace(/\/$/, '');
 const apiUrl = path => `${serverOrigin}${path}`;
 const websocketUrl = `${serverOrigin.replace(/^http/, 'ws')}/ws`;
+const voiceEnvironment = getVoiceEnvironment();
+const externalBrowser = voiceEnvironment.ios ? 'Safari' : 'Chrome';
+const browserHelp = id => voiceEnvironment.instagram ? `<div class="browser-help"><p>인스타그램에서는 음성 인식이 제한될 수 있어요. 주소를 복사해 <b>${externalBrowser} 앱</b>에서 열어주세요.</p><input id="${id}-value" class="browser-url" aria-label="${externalBrowser}에서 열 주소" value="${escape(location.href)}" readonly/><button id="${id}" class="button secondary full-width">${icon('link')} 주소 복사</button></div>` : '';
 let room = null, myId = null, ws = null, activeName = '', mode = 'solo', inputMode = 'voice', micReady = false, voiceBusy = false, view = 'home', localCalls = 0, keyboardCallLocked = false, keyboardComposing = false, sound = false, audioContext, lastHoof = 0;
 const musicSources = {
   lobby: encodeURI(`${import.meta.env.BASE_URL}대기실.mp3`),
@@ -41,6 +44,12 @@ function stopMusic() {
   music.pause();
 }
 function syncMusic(retry = false) {
+  // Changing play/pause during WebKit speech capture can interrupt recognition.
+  // Keep an existing player running silently when the user switches sound OFF.
+  if (voiceEnvironment.ios && voice.active && musicTrack) {
+    music.muted = !sound;
+    if (!sound) return;
+  } else music.muted = false;
   const track = !sound || room?.phase === 'finished' ? null : room?.phase === 'racing' ? 'racing' : 'lobby';
   if (!track) { if (musicTrack) stopMusic(); return; }
   if (track === musicTrack && !retry) return;
@@ -71,6 +80,7 @@ document.querySelector('#app').innerHTML = `
         </section>
         <section class="hero-content">
           <h1>경주 준비</h1>
+          ${browserHelp('copy-browser-url')}
           ${inviteCode ? `<div id="invite-banner" class="invite-banner">${icon('people')} <span>초대방 확인 중</span><b>${escape(inviteCode)}</b></div>` : ''}
           <section class="name-card" aria-labelledby="name-title">
             <div class="name-heading"><label id="name-title" for="horse-name">말 이름</label></div>
@@ -93,7 +103,7 @@ document.querySelector('#app').innerHTML = `
     <div id="countdown" class="countdown hidden"><strong id="countdown-number">3</strong></div>
     <div class="race-controls"><div class="speed-readout"><b id="speed-value">18</b><span>km/h</span><small id="speed-label">기본 속도</small></div><div class="shout-panel"><div class="shout-label"><span id="input-status">${icon('mic')} 이름을 불러주세요</span><span id="call-count">0회 인식</span></div><strong id="shout-name"></strong><div id="voice-bars" class="voice-bars">${Array.from({ length: 25 }, (_, i) => `<i style="--i:${i}"></i>`).join('')}</div><p id="transcript"></p><input id="keyboard-name-input" class="keyboard-name-input hidden" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="경주마 이름 따라 쓰기"/><button id="reconnect-mic" class="button secondary hidden">마이크 다시 연결</button></div><div class="boost-readout"><span>가속</span><div class="boost-track"><i id="boost-fill"></i></div><b id="boost-value">0%</b></div></div>
   </section>
-  <dialog id="lobby-dialog" class="modal" aria-labelledby="lobby-title"><div class="modal-scroll"><h2 id="lobby-title">마이크 설정</h2><p id="lobby-description"></p><div id="invite-area" class="hidden"><label for="invite-link">초대 링크</label><div class="invite-link-row"><input id="invite-link" readonly/><button id="copy-link" class="button secondary">${icon('link')} 복사</button></div></div><div id="lobby-players" class="lobby-players"></div><div class="mic-test"><div><span class="mic-test-icon">${icon('mic')}</span><div><b id="mic-title">마이크를 연결해주세요</b><p id="mic-description"></p></div></div><div class="mic-meter"><i id="mic-meter-fill"></i></div><p id="mic-transcript" aria-live="polite"></p></div><p class="privacy-note">음성은 브라우저 인식 서비스에서 처리될 수 있습니다.</p><div id="lobby-error" class="inline-error hidden" role="alert"></div><button id="connect-mic" class="button primary full-width">${icon('mic')} 마이크 연결하기</button><button id="start-race" class="button primary full-width hidden">${icon('flag')} 경주 시작하기 ${icon('arrow')}</button><button id="practice-button" class="practice-button">키보드로 체험 ${icon('arrow')}</button><p id="lobby-wait" class="lobby-wait"></p></div></dialog>
+  <dialog id="lobby-dialog" class="modal" aria-labelledby="lobby-title"><div class="modal-scroll"><h2 id="lobby-title">마이크 설정</h2><p id="lobby-description"></p><div id="invite-area" class="hidden"><label for="invite-link">초대 링크</label><div class="invite-link-row"><input id="invite-link" readonly/><button id="copy-link" class="button secondary">${icon('link')} 복사</button></div></div><div id="lobby-players" class="lobby-players"></div>${browserHelp('copy-lobby-browser-url')}<div class="mic-test"><div><span class="mic-test-icon">${icon('mic')}</span><div><b id="mic-title">마이크를 연결해주세요</b><p id="mic-description"></p></div></div><div class="mic-meter"><i id="mic-meter-fill"></i></div><p id="mic-transcript" aria-live="polite"></p></div><p class="privacy-note">음성은 브라우저 인식 서비스에서 처리될 수 있습니다.</p><div id="lobby-error" class="inline-error hidden" role="alert"></div><button id="connect-mic" class="button primary full-width">${icon('mic')} 마이크 연결하기</button><button id="start-race" class="button primary full-width hidden">${icon('flag')} 경주 시작하기 ${icon('arrow')}</button><button id="practice-button" class="practice-button">키보드로 체험 ${icon('arrow')}</button><p id="lobby-wait" class="lobby-wait"></p></div></dialog>
   <dialog id="result-dialog" class="modal result-modal"><div class="modal-scroll"><div class="result-icon">${icon('trophy')}</div><h2 id="result-title">경주 결과</h2><p id="result-description"></p><div class="result-stats"><div><span>완주 기록</span><b id="result-time"></b></div><div><span>인식 횟수</span><b id="result-calls"></b></div></div><div id="result-board"></div><p id="result-wait" class="lobby-wait"></p><button id="replay" class="button primary full-width">다시 경주 ${icon('arrow')}</button><button id="result-home" class="button secondary full-width">처음으로</button></div></dialog>
   <div id="toast" class="toast hidden" role="status"></div>
 `;
@@ -211,7 +221,9 @@ const voice = new VoiceController({
       if (room?.phase === 'lobby') { send({ type: 'ready', ready: false }); lobbyError(message); show('connect-mic'); $('connect-mic').disabled = false; }
       else { $('transcript').textContent = message; show('reconnect-mic'); }
       $('mic-title').textContent = '마이크 연결을 확인해주세요';
-    } else { $('mic-title').textContent = '마이크 연결됨'; $('mic-description').textContent = `“${activeName}”을 또렷하게 불러보세요.`; }
+    } else if (status === 'checking') {
+      $('mic-title').textContent = '음성 인식 확인 중'; $('mic-description').textContent = message;
+    } else { $('mic-title').textContent = '음성 인식 연결됨'; $('mic-description').textContent = `“${activeName}”을 또렷하게 불러보세요.`; }
   },
   onTranscript: text => { if (room?.phase === 'lobby' && !localCalls) $('mic-transcript').textContent = text ? `들린 말: ${text}` : ''; },
   onProgress: ({ progress, calls }) => { if (room?.phase === 'racing') paintNameProgress(progress, calls > 0); },
@@ -355,13 +367,23 @@ function renderLobby() {
 }
 async function prepareVoice() {
   if (voiceBusy) return;
+  inputMode = 'voice';
   voiceBusy = true; lobbyError(); $('connect-mic').disabled = true; $('connect-mic').textContent = '마이크 연결 중…'; $('reconnect-mic').disabled = true;
   try {
     const started = await voice.start(activeName);
     if (!started || !room) return;
     micReady = true; inputMode = 'voice'; send({ type: 'ready', ready: true }); show('reconnect-mic', false);
-  } catch (error) { if (!room) return; if (view === 'race') $('transcript').textContent = error.message; else lobbyError(error.message); }
+  } catch (error) { if (!room || inputMode === 'keyboard') return; if (view === 'race') $('transcript').textContent = error.message; else lobbyError(error.message); }
   finally { voiceBusy = false; $('connect-mic').disabled = false; $('connect-mic').innerHTML = `${icon('mic')} 마이크 연결하기`; $('reconnect-mic').disabled = false; }
+}
+for (const id of ['copy-browser-url', 'copy-lobby-browser-url']) {
+  if (!$(id)) continue;
+  $(id).onclick = async () => {
+    const input = $(`${id}-value`);
+    input.value = location.href;
+    try { await navigator.clipboard.writeText(input.value); toast(`주소를 복사했어요. ${externalBrowser} 앱 주소창에 붙여넣어주세요.`); }
+    catch { input.focus(); input.select(); input.setSelectionRange(0, input.value.length); toast('주소를 선택했어요. 복사해서 브라우저 앱에서 열어주세요.'); }
+  };
 }
 $('connect-mic').onclick = prepareVoice; $('reconnect-mic').onclick = prepareVoice;
 $('practice-button').onclick = () => { voice.stop(); inputMode = 'keyboard'; micReady = false; lobbyError(); $('mic-title').textContent = '키보드 체험 모드'; $('mic-description').textContent = `“${activeName}”을 정확히 입력할 때마다 빨라집니다.`; $('mic-transcript').textContent = ''; send({ type: 'ready', ready: true }); };

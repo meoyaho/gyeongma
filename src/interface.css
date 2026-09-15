@@ -15,6 +15,10 @@
   background: #d6eee9;
 }
 body { background: #d6eee9; }
+.browser-help { margin: 0 0 18px; padding: 14px; border: 1px solid #5e9b7e55; border-radius: 14px; background: #f5fff8; }
+.browser-help p { margin: 0 0 10px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.browser-url { display: block; width: 100%; min-width: 0; margin-bottom: 8px; padding: 8px; border: 1px solid #5e9b7e55; border-radius: 6px; font-size: 12px; }
+.browser-help .button { min-height: 40px; font-size: 12px; }
 #home-view {
   position: relative;
   isolation: isolate;

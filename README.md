@@ -51,6 +51,10 @@ Chrome에서 한국어 음성 인식을 확인하도록 구성했습니다. 브�
 
 마이크는 사용자가 연결 버튼을 누를 때 음성 인식 서비스가 직접 요청하며, 나가기·완주 시 종료됩니다. 모바일(아이폰·아이패드·안드로이드)은 별도의 음량 측정용 마이크를 열지 않고 인식 서비스의 발화 이벤트로 막대를 표시합니다. 데스크톱의 음량 측정은 선택 기능으로, 권한이나 오디오 초기화가 실패해도 음성 인식을 막지 않습니다. 시작 오류는 권한·서비스 제한·입력 장치·네트워크 원인을 구분해 표시합니다. Safari에서 서비스가 허용되지 않으면 Siri 또는 받아쓰기 설정도 확인하세요. ([WebKit 안내](https://webkit.org/blog/11648/new-webkit-features-in-safari-14-1/)) 게임 서버는 오디오와 인식 문장을 저장하거나 받지 않고 반복 횟수만 받습니다. 브라우저의 음성 인식 서비스에는 음성이 전송될 수 있습니다. [SpeechRecognition 문서](https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition)
 
+iPhone/iPad에서는 마이크 연결 버튼으로 별도의 무음 Web Audio 세션을 시작합니다. 사운드 OFF에서도 오디오 처리를 유지하고, 지원되는 환경에서는 `navigator.audioSession.type = 'play-and-record'`를 설정하며 종료 시 기존 값을 복구합니다. 배경음 OFF 전환은 음성 인식 중인 iOS에서 재생 중단 대신 음소거를 사용합니다. 이는 [WebKit 음성 입력 세션 유지 문제](https://bugs.webkit.org/show_bug.cgi?id=317741)와 사용자의 사운드 ON/OFF 재현 결과에 대한 호환성 조치입니다. iOS 버전과 출력 장치에 따른 실제 인식·음악 출력은 기기에서 확인해야 합니다.
+
+모바일은 마이크 시작 이벤트만으로 준비 완료를 표시하지 않습니다. 연결 후 이름을 불러 실제 인식 문장이 도착해야 준비를 완료하며, 15초 동안 결과가 없으면 마이크를 정리하고 재연결을 안내합니다. iOS의 인식기 교체는 기존 인식기의 종료 이벤트를 기다립니다(종료 이벤트가 없으면 1초 후 재시도). 인스타그램 접속 시 Safari/Chrome 앱에서 열도록 주소 복사 안내를 표시하며, 인앱 브라우저의 서비스 거부를 Siri 설정 문제로 단정하지 않습니다. [WebKit 인앱 음성 인식 권한 설명](https://bugs.webkit.org/show_bug.cgi?id=239816)
+
 외부 친구에게 보내려면 **HTTPS 공개 배포**가 필요합니다. localhost 링크는 현재 컴퓨터에서만 열립니다. 마이크는 보안 컨텍스트(HTTPS 또는 localhost)에서 동작합니다. WebSocket을 지원하는 Node/Docker 호스팅에 배포하세요. `Dockerfile`, `render.yaml`을 제공합니다. 배포된 주소에서 생성한 초대 링크는 자동으로 공개 주소를 사용합니다.
 
 GitHub Pages를 화면 주소로 유지하면서 서버를 분리할 때는 현재 Docker 이미지를 Cloud Run에 배포합니다. Cloud Run 주소를 GitHub 저장소의 Actions 변수 `VITE_SERVER_ORIGIN`에 저장하면 Pages 빌드가 이름 확인 API와 WebSocket을 그 서버에 연결합니다. 서버의 `FRONTEND_ORIGINS`에는 `https://meoyaho.github.io`를 설정합니다. 현재 경주 상태가 단일 프로세스 메모리에 있으므로 Cloud Run 최대 인스턴스는 1개로 제한해야 합니다.

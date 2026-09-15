@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { VoiceController } from '../src/voice.js';
+import { VoiceController, getVoiceEnvironment } from '../src/voice.js';
 
 test('speech interim/final updates count each name once and release microphone on stop', async () => {
   let stopped = 0, closed = 0;
@@ -81,6 +81,7 @@ function setupVoice(t, device = {}) {
   class Recognition {
     constructor() { recognizers.push(this); }
     start() { this.started = true; }
+    emit(text) { this.onresult?.({ results: [[{ transcript: text }]] }); }
     abort() { this.aborted = true; }
   }
   globalThis.window = { isSecureContext: true, webkitSpeechRecognition: Recognition };
@@ -110,6 +111,7 @@ for (const device of [
     const rec = recognizers[0];
     assert.equal(rec.started, true);
     rec.onstart();
+    rec.emit('바람을따라');
     assert.equal(await start, true);
     assert.equal(captures(), 0, 'mobile never opens a volume-meter capture');
     rec.onspeechstart(); assert.equal(levels.at(-1), 0.65);
@@ -130,7 +132,7 @@ for (const [code, expected] of [
     assert.equal(controller.active, false);
     assert.match(statuses.at(-1)[1], expected);
     const retry = controller.start('바람을따라');
-    recognizers[1].onstart();
+    recognizers[1].onstart(); recognizers[1].emit('바람을따라');
     assert.equal(await retry, true);
   });
 }
@@ -154,7 +156,7 @@ test('an early no-speech/end can restart and settle the original connection', as
   recognizers[0].onend();
   t.mock.timers.tick(180);
   assert.equal(recognizers.length, 2);
-  recognizers[1].onstart();
+  recognizers[1].onstart(); recognizers[1].emit('바람을따라');
   assert.equal(await start, true);
   t.mock.timers.tick(12000);
   assert.equal(controller.active, true, 'ready clears the original timeout');
@@ -180,8 +182,129 @@ test('cancelled startup and late events cannot stop a new connection', async t =
   controller.stop();
   const retry = controller.start('바람을따라');
   oldStart();
-  recognizers[1].onstart();
+  recognizers[1].onstart(); recognizers[1].emit('바람을따라');
   await rejection;
   assert.equal(await retry, true);
   assert.equal(controller.active, true);
+});
+
+
+test('Instagram service refusal gives external-browser guidance without blaming Siri', async t => {
+  const { controller, recognizers } = setupVoice(t, { userAgent: 'Mozilla/5.0 (iPhone) Instagram 400.0' });
+  const start = controller.start('바람을따라');
+  const rejection = assert.rejects(start, error => /인스타그램.*주소를 복사해 Safari/.test(error.message) && !error.message.includes('Siri'));
+  recognizers[0].onerror({ error: 'service-not-allowed' });
+  await rejection;
+});
+
+test('mobile readiness requires an actual nonempty transcription, not mic or speech events', async t => {
+  const { controller, recognizers, statuses } = setupVoice(t);
+  let connected = false;
+  const start = controller.start('바람을따라').then(value => { connected = value; });
+  const rec = recognizers[0];
+  rec.onstart(); rec.onspeechstart(); rec.emit('  ');
+  await Promise.resolve();
+  assert.equal(connected, false);
+  assert.equal(statuses.at(-1)[0], 'checking');
+  rec.emit('바람을따라');
+  await start;
+  assert.equal(connected, true);
+  assert.equal(statuses.at(-1)[0], 'listening');
+});
+
+test('mobile mic without results times out and releases capture rather than reporting ready', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { controller, recognizers, statuses } = setupVoice(t);
+  const start = controller.start('바람을따라');
+  const rejection = assert.rejects(start, /아직 인식된 말이 없어요/);
+  recognizers[0].onstart();
+  t.mock.timers.tick(15000);
+  await rejection;
+  assert.equal(controller.active, false);
+  assert.equal(recognizers[0].aborted, true);
+  assert.equal(statuses.at(-1)[0], 'error');
+});
+
+function mockAudioSession() {
+  const events = [];
+  navigator.audioSession = { type: 'auto' };
+  window.AudioContext = class {
+    constructor() { this.destination = {}; events.push('context'); }
+    createConstantSource() {
+      const source = { offset: { value: 1 }, connect() {}, start() { assert.equal(source.offset.value, 0); events.push('silent-start'); }, stop() { events.push('silent-stop'); }, disconnect() {} };
+      return source;
+    }
+    resume() { events.push('resume'); return Promise.resolve(); }
+    close() { events.push('close'); return Promise.resolve(); }
+  };
+  return events;
+}
+
+test('iOS activates a silent audio session from the mic tap independently of music', async t => {
+  const { controller, recognizers, captures } = setupVoice(t);
+  const events = mockAudioSession();
+  const Recognition = window.webkitSpeechRecognition;
+  window.webkitSpeechRecognition = class extends Recognition {
+    start() { events.push('recognition-start'); super.start(); }
+  };
+  const start = controller.start('바람을따라');
+  assert.deepEqual(events, ['context', 'silent-start', 'resume', 'recognition-start']);
+  assert.equal(navigator.audioSession.type, 'play-and-record');
+  recognizers[0].onstart(); recognizers[0].emit('바람을따라');
+  assert.equal(await start, true);
+  assert.equal(captures(), 0);
+  controller.stop();
+  assert.deepEqual(events.slice(-2), ['silent-stop', 'close']);
+  assert.equal(navigator.audioSession.type, 'auto');
+});
+
+test('iOS audio-session failure rejects startup and cleans up the microphone', async t => {
+  const { controller, recognizers } = setupVoice(t);
+  const events = mockAudioSession();
+  window.AudioContext.prototype.resume = () => Promise.reject(new Error('interrupted'));
+  const start = controller.start('바람을따라');
+  await assert.rejects(start, /오디오 입력을 시작하지 못했어요/);
+  assert.equal(recognizers[0].aborted, true);
+  assert.equal(navigator.audioSession.type, 'auto');
+  assert.ok(events.includes('close'));
+});
+
+test('iOS recognizer replacement waits for mic release and preserves its audio session', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { controller, recognizers } = setupVoice(t);
+  const events = mockAudioSession();
+  const start = controller.start('바람을따라');
+  const old = recognizers[0], lateResult = old.onresult;
+  old.onstart(); old.emit('바람을따라'); await start;
+  controller.resetRecognition();
+  assert.equal(recognizers.length, 1);
+  assert.equal(old.aborted, true);
+  assert.equal(events.includes('close'), false);
+  controller.resetRecognition(); // Another reset must not cancel pending release.
+  old.onend();
+  t.mock.timers.tick(179); assert.equal(recognizers.length, 1);
+  t.mock.timers.tick(1); assert.equal(recognizers.length, 2);
+  recognizers[1].onstart();
+  lateResult({ results: [[{ transcript: '바람을따라' }]] });
+  assert.equal(controller.recognition, recognizers[1]);
+});
+
+test('iOS release fallback is bounded and cancelled when the user stops', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { controller, recognizers } = setupVoice(t);
+  const start = controller.start('바람을따라');
+  recognizers[0].onstart(); recognizers[0].emit('바람을따라'); await start;
+  controller.resetRecognition();
+  t.mock.timers.tick(1000); t.mock.timers.tick(180);
+  assert.equal(recognizers.length, 2);
+  controller.resetRecognition();
+  const lateEnd = recognizers[1].onend;
+  controller.stop();
+  lateEnd(); t.mock.timers.tick(2000);
+  assert.equal(recognizers.length, 2);
+});
+
+test('voice environment detects Instagram and desktop-mode iPad independently', () => {
+  assert.deepEqual(getVoiceEnvironment({ userAgent: 'Android Instagram' }), { ios: false, mobile: true, instagram: true });
+  assert.deepEqual(getVoiceEnvironment({ userAgent: 'Macintosh Safari', platform: 'MacIntel', maxTouchPoints: 5 }), { ios: true, mobile: true, instagram: false });
 });
