@@ -236,6 +236,8 @@ dialog::backdrop { background: #254f4660; backdrop-filter: blur(9px); }
   :root { --home-edge-gap: 16px; --setup-panel-width: min(450px, calc(100vw - 32px)); }
   .horse-figure { width: 288px; height: 288px; max-width: 85.5vw; left: 50%; top: 250px; }
   #lobby-dialog { position: absolute; inset: 450px var(--home-edge-gap) auto auto; transform: none; max-height: none; margin-bottom: calc(48px + env(safe-area-inset-bottom)); }
+  /* This sheet grows with the mobile page; swipes must reach the page scroller. */
+  #lobby-dialog>.modal-scroll { overscroll-behavior-y: auto; }
   .home-sound-button { top: 16px; }
   .race-button.home-help-button { top: 16px; }
   .help-heading { padding-left: 16px; padding-right: 8px; }

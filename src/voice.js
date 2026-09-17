@@ -22,6 +22,7 @@ export class VoiceController {
     // iPadOS can identify itself as a Mac. Mobile recognition owns the mic:
     // a second capture for the volume meter can interrupt that audio session.
     Object.assign(this, getVoiceEnvironment());
+    this.android = /Android/i.test(navigator.userAgent || '');
     this.active = true;
     this.Recognition = Recognition;
     try {
@@ -124,7 +125,9 @@ export class VoiceController {
   }
   createRecognition() {
     const rec = this.recognition = new this.Recognition();
-    rec.lang = 'ko-KR'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+    // Chromium's Android continuous mode can promote cumulative partials to
+    // separate final results. Use one utterance per session; onend reconnects.
+    rec.lang = 'ko-KR'; rec.continuous = !this.android; rec.interimResults = true; rec.maxAlternatives = 1;
     let highWater = 0, lastText = '';
     rec.onstart = () => {
       if (this.recognition !== rec || !this.active) return;
@@ -150,7 +153,12 @@ export class VoiceController {
     rec.onspeechend = () => { if (this.active && this.recognition === rec && this.mobile && !this.activityTimer) this.onLevel?.(0); };
     rec.onresult = event => {
       if (this.recognition !== rec || !this.active) return;
-      const transcript = Array.from(event.results, r => r[0].transcript).join('');
+      // Android sessions contain one utterance. Even if a provider appends its
+      // revisions, only the latest hypothesis belongs in the display/count.
+      // Keep repeated names *within* that hypothesis and in subsequent sessions.
+      const transcript = this.android
+        ? (event.results[event.results.length - 1]?.[0]?.transcript || '')
+        : Array.from(event.results, r => r[0].transcript).join('');
       if (transcript.trim()) {
         this.showRecognitionActivity();
         if (this.pendingStart) this.confirmRecognition();

@@ -98,6 +98,76 @@ function setupVoice(t, device = {}) {
   return { controller, recognizers, statuses, levels, captures: () => captures };
 }
 
+const androidDevice = { userAgent: 'Mozilla/5.0 (Linux; Android 15) Chrome/140.0 Mobile Safari/537.36' };
+function speechResult(transcript, isFinal = false, confidence = 0) {
+  return Object.assign([{ transcript, confidence }], { isFinal });
+}
+
+test('Galaxy appended final hypotheses replace the utterance instead of multiplying calls', async t => {
+  const { controller, recognizers } = setupVoice(t, androidDevice);
+  const calls = [], transcripts = [];
+  controller.onCalls = n => calls.push(n);
+  controller.onTranscript = text => transcripts.push(text);
+  const start = controller.start('헬로콩콩');
+  const rec = recognizers[0]; rec.onstart();
+  assert.equal(rec.continuous, false);
+  assert.equal(rec.interimResults, true);
+  // Reduced from the device log: partials were all marked final and appended
+  // at new indexes, including five copies of the same complete phrase.
+  const results = [];
+  for (const text of ['', '', '', '', '헬로', ...Array(5).fill('헬로 콩콩'),
+    ...Array(5).fill('헬로 콩콩 셜록'), ...Array(2).fill('헬로 콩콩 셜록 콩콩이'),
+    '헬로 콩콩 셜록 콩콩이 새로', '헬로 콩콩 셜록 콩콩이 새로 콩콩이']) {
+    results.push(speechResult(text, true));
+    rec.onresult({ resultIndex: results.length - 1, results });
+    assert.equal(transcripts.at(-1), text);
+  }
+  results.push(speechResult('헬로 콩콩 셜록 콩콩이 새로 콩콩이', true, 0.8669));
+  rec.onresult({ resultIndex: results.length - 1, results });
+  assert.equal(await start, true);
+  assert.deepEqual(calls, [1]);
+  assert.equal(transcripts.at(-1), '헬로 콩콩 셜록 콩콩이 새로 콩콩이');
+});
+
+test('Android keeps real repeated names within an utterance and across automatic restarts', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { controller, recognizers } = setupVoice(t, androidDevice);
+  const calls = [], progress = [];
+  controller.onCalls = n => calls.push(n);
+  controller.onProgress = value => progress.push(value);
+  const start = controller.start('새벽콩콩이');
+  const rec = recognizers[0]; rec.onstart();
+  const emit = (text, final = false) => rec.onresult({ resultIndex: 0, results: [speechResult(text, final)] });
+  emit('새벽'); assert.equal(progress.at(-1).progress, 2);
+  emit('새벽 콩콩이'); await start;
+  emit('새벽 콩콩이 새벽 콩콩이');
+  emit('새벽 콩콩이 새벽 콩콩이', true);
+  assert.deepEqual(calls, [1, 1]);
+  const lateResult = rec.onresult;
+  rec.onend(); t.mock.timers.tick(180);
+  const next = recognizers[1]; next.onstart();
+  assert.equal(next.continuous, false);
+  lateResult({ resultIndex: 0, results: [speechResult('새벽콩콩이', true)] });
+  assert.deepEqual(calls, [1, 1]);
+  next.onresult({ resultIndex: 0, results: [speechResult('새벽콩콩이', true)] });
+  assert.deepEqual(calls, [1, 1, 1], 'a new spoken utterance counts even when its text is identical');
+});
+
+for (const userAgent of ['iPhone', 'Desktop Chrome']) {
+  test(`${userAgent} preserves separate final segments in continuous recognition`, async t => {
+    const { controller, recognizers } = setupVoice(t, { userAgent });
+    const calls = []; controller.onCalls = n => calls.push(n);
+    const start = controller.start('새벽콩콩이');
+    const rec = recognizers[0]; rec.onstart();
+    assert.equal(rec.continuous, true);
+    rec.onresult({ resultIndex: 0, results: [speechResult('새벽콩콩이', true)] });
+    await start;
+    rec.onresult({ resultIndex: 1, results: [speechResult('새벽콩콩이', true), speechResult('새벽콩콩이', true)] });
+    assert.deepEqual(calls, [1, 1]);
+    controller.stop();
+  });
+}
+
 for (const device of [
   { userAgent: 'Mozilla/5.0 (iPhone) Version/18.0 Mobile Safari/604.1' },
   { userAgent: 'Mozilla/5.0 (iPhone) CriOS/140.0 Mobile Safari/604.1' },
@@ -120,7 +190,7 @@ for (const device of [
 }
 
 for (const [code, expected] of [
-  ['not-allowed', /사이트 설정/], ['service-not-allowed', /Siri/],
+  ['not-allowed', /사이트 설정/], ['service-not-allowed', /음성 인식 서비스.*Safari 또는 Chrome/],
   ['audio-capture', /마이크 입력/], ['network', /인터넷 연결/]
 ]) {
   test(`startup preserves the actual ${code} error and allows retry`, async t => {
