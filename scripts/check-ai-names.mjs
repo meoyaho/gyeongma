@@ -15,6 +15,7 @@ const cases = [
   ['삼성전자', 'AI_COMMERCIAL'], ['무료배송', 'AI_COMMERCIAL'], ['이케아최고', 'AI_COMMERCIAL'],
   ['시발경주', 'AI_INAPPROPRIATE'], ['개새끼말', 'AI_INAPPROPRIATE'],
   ['바람을따라', 'AI_ALLOWED'], ['하하하하', 'AI_ALLOWED'], ['당근이좋아', 'AI_ALLOWED'], ['우당탕질주', 'AI_ALLOWED'],
+  ['간다니에', 'AI_ALLOWED'], ['레이디고고', 'AI_ALLOWED'],
 ];
 let exact = 0, safeDecisions = 0;
 for (let i = 0; i < cases.length; i += 2) {
