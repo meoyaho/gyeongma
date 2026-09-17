@@ -16,7 +16,7 @@ export function validateName(name) {
   if (name.length < 4 || name.length > 6) return { ok: false, message: '말 이름은 4~6글자로 입력해주세요.' };
   for (let index = 1; index < name.length; index++) {
     if (name[index] === '네' && NOUNS_AFTER_NE.includes(name.slice(index + 1))) {
-      return { ok: false, message: '"네" 뒤에 흔한 명사가 오면 음성 인식이 "의"로 잘못 알아들을 수 있어요. 다른 이름을 입력해주세요.' };
+      return { ok: false, message: '음성 인식이 헷갈릴 수 있는 이름이에요. 다른 이름을 입력해주세요.' };
     }
   }
   return { ok: true, message: '이름 형식이 확인되었습니다.' };
