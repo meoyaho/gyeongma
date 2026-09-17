@@ -1,7 +1,7 @@
 import './env.js';
 import express from 'express';
 import { createServer } from 'node:http';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
@@ -9,10 +9,10 @@ import { RACE_DISTANCE, MIN_SPEED, speedForCalls } from '../shared/rules.js';
 import { checkName } from './name-check.js';
 import { saveRoom, deleteRoom } from './room-store.js';
 import { getRankedAiHorseNames } from './kra-rankings.js';
+import { resumeHash, disconnectPlayer, resumePlayer, expiredLobbyPlayers } from './room-session.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const app = express();
-const LOBBY_GRACE_MS = 60_000;
 const rooms = new Map();
 const roomWrites = new Map();
 const frontendOrigins = new Set((process.env.FRONTEND_ORIGINS || 'https://meoyaho.github.io').split(',').map(origin => origin.trim()).filter(Boolean));
@@ -44,9 +44,6 @@ function allowNameRequest(key) {
   if (window.count++ >= 30 || (!nameRequests.has(key) && nameRequests.size >= 5000)) return false;
   nameRequests.set(key, window);
   return true;
-}
-function resumeHash(token) {
-  return createHash('sha256').update(String(token || '')).digest('hex');
 }
 function persist(room) {
   const snapshot = { ...room, players: room.players.map(player => ({ ...player })) };
@@ -117,7 +114,7 @@ function player(ws, name, lane, appearance, token = null) { return { id: randomU
 function removePlayer(room, playerId) {
   room.players = room.players.filter(p => p.id !== playerId);
   if (!room.players.some(p => !p.bot)) { rooms.delete(room.code); removePersisted(room.code); return; }
-  if (room.host === playerId) room.host = room.players.find(p => !p.bot)?.id;
+  if (room.host === playerId) room.host = (room.players.find(p => !p.bot && p.connected) || room.players.find(p => !p.bot))?.id;
   if (room.phase === 'lobby') persist(room);
   broadcast(room);
 }
@@ -139,11 +136,7 @@ function disconnect(ws) {
   const room = rooms.get(ws.roomCode);
   ws.roomCode = null;
   if (!room) return;
-  const p = room.players.find(p => p.id === ws.playerId);
-  if (!p || p.ws !== ws) return;
-  p.connected = false; p.ws = null; p.calls = []; p.speed = 0;
-  if (room.phase === 'lobby') p.disconnectedAt = Date.now();
-  if (room.host === p.id) { const live = room.players.find(other => !other.bot && other.connected); if (live) room.host = live.id; }
+  if (!disconnectPlayer(room, ws)) return;
   if (room.phase === 'lobby') persist(room);
   broadcast(room);
 }
@@ -208,11 +201,11 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'resume') {
         if (ws.roomCode) return fail('이미 경주에 참여 중이에요.');
         const room = rooms.get(msg.code);
-        const p = room?.players.find(player => player.id === msg.playerId);
-        if (!room || !p || p.connected || !p.resumeHash || p.resumeHash !== resumeHash(msg.resumeToken)) return fail('대기실을 다시 불러오지 못했어요. 새로고침해주세요.');
-        p.ws = ws; p.connected = true; delete p.disconnectedAt;
-        ws.roomCode = room.code; ws.playerId = p.id;
-        send(ws, { type: 'joined', id: p.id, code: room.code, name: p.name, mode: room.mode, resumeToken: msg.resumeToken });
+        const p = resumePlayer(room, ws, msg);
+        if (!p) return send(ws, { type: 'error', code: 'RESUME_FAILED', message: '대기실 복구 시간이 지났거나 방이 종료됐어요. 새 초대방을 만들어주세요.' });
+        send(ws, p.reserved
+          ? { type: 'reserved', id: p.id, code: room.code, lane: p.lane, appearance: p.appearance, reservationToken: msg.resumeToken }
+          : { type: 'joined', id: p.id, code: room.code, name: p.name, mode: room.mode, resumeToken: msg.resumeToken });
         if (room.phase === 'lobby') persist(room);
         broadcast(room);
         return;
@@ -299,7 +292,7 @@ const ticker = setInterval(() => {
   for (const room of rooms.values()) {
     if (now - room.createdAt > 30 * 60 * 1000) { room.players.forEach(p => { send(p.ws, { type: 'expired' }); p.ws?.close(); }); rooms.delete(room.code); removePersisted(room.code); continue; }
     if (room.phase === 'lobby') {
-      const stale = room.players.filter(p => !p.bot && !p.connected && p.disconnectedAt && now - p.disconnectedAt > LOBBY_GRACE_MS);
+      const stale = expiredLobbyPlayers(room, now);
       if (stale.length) { stale.forEach(p => removePlayer(room, p.id)); if (!rooms.has(room.code)) continue; }
     }
     if (room.phase === 'countdown' && now >= room.startAt) room.phase = 'racing';

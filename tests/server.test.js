@@ -77,7 +77,6 @@ test('friends room supports 8, keeps a dropped seat during the reconnect grace w
   // One-player friend races cannot start.
   host.send({ type: 'ready', ready: true }); host.send({ type: 'start' }); assert.match((await host.wait(d => d.type === 'error')).message, /한 명/);
   for (let i = 0; i < 7; i++) { guests[i].send({ type: 'join', code: joined.code, name: names[i] }); await guests[i].wait(d => d.type === 'joined'); }
-  const guest0Id = (await guests[0].wait(d => d.type === 'joined')).id;
   const full = await host.wait(d => d.type === 'state' && d.players.length === 8); assert.equal(full.players.filter(p => p.bot).length, 0);
   assert.equal(full.players.some(p => p.resumeHash || p.reservationToken || p.resumeToken), false, 'reservation credentials are private');
   assert.equal(new Set(full.players.map(p => horseAppearance(p.appearance).src)).size, 8, 'all players receive distinct horse illustrations');
@@ -85,12 +84,12 @@ test('friends room supports 8, keeps a dropped seat during the reconnect grace w
   guests[0].send({ type: 'start' }); assert.match((await guests[0].wait(d => d.type === 'error')).message, /방장/);
   host.clear(); host.send({ type: 'start' }); assert.match((await host.wait(d => d.type === 'error')).message, /준비/);
   // Dropping the connection (e.g. backgrounding the tab to share the invite link) must not
-  // vacate the seat immediately: host role transfers away, but the seat itself is kept.
+  // vacate the seat or transfer the host role while the grace window is open.
   host.socket.close();
-  const afterDrop = await guests[0].wait(d => d.type === 'state' && d.host !== joined.id);
+  const afterDrop = await guests[0].wait(d => d.type === 'state' && d.players.find(p => p.id === joined.id)?.connected === false);
   assert.equal(afterDrop.players.length, 8, 'the disconnected host keeps its seat during the grace window');
   assert.equal(afterDrop.players.find(p => p.id === joined.id).connected, false);
-  assert.equal(afterDrop.host, guest0Id, 'host role transfers to a connected player while the seat is held open');
+  assert.equal(afterDrop.host, joined.id, 'sharing the invite does not transfer the host role');
   // The original host resumes with a fresh connection using its resume token.
   const resumed = client(); t.after(() => resumed.socket.close()); await resumed.ready;
   resumed.send({ type: 'resume', code: joined.code, playerId: joined.id, resumeToken: joined.resumeToken });
@@ -98,8 +97,9 @@ test('friends room supports 8, keeps a dropped seat during the reconnect grace w
   assert.equal(rejoined.id, joined.id);
   const afterResume = await resumed.wait(d => d.type === 'state' && d.players.find(p => p.id === joined.id)?.connected);
   assert.equal(afterResume.players.length, 8, 'resuming reclaims the existing seat instead of creating a duplicate');
-  assert.equal(afterResume.host, guest0Id, 'resuming does not steal host role back');
-  const leader = guests[0];
+  assert.equal(afterResume.host, joined.id, 'the returning host retains its role');
+  const leader = resumed;
+  leader.send({ type: 'ready', ready: true });
   for (const guest of guests.slice(0, 7)) guest.send({ type: 'ready', ready: true });
   await leader.wait(d => d.phase === 'lobby' && d.players.length === 8 && d.players.every(p => p.ready));
   leader.send({ type: 'start' });

@@ -5,6 +5,7 @@ import { RaceScene } from './scene.js';
 import { VoiceController, getVoiceEnvironment } from './voice.js';
 import { GameAudio } from './audio.js';
 import { horseAppearance } from '../shared/horse-appearances.js';
+import { createRoomSessionStore } from './room-session.js';
 
 const icons = {
   horse: '<path d="m8 20 1-6-3-3 6-8 2 5 5 3 1 5-5 1-1 3M12 8l-2 3 4 2M15 11h.01"/>',
@@ -25,6 +26,9 @@ let inviteCode = new URL(location.href).searchParams.get('room')?.toUpperCase();
 const serverOrigin = (import.meta.env.VITE_SERVER_ORIGIN || location.origin).replace(/\/$/, '');
 const apiUrl = path => `${serverOrigin}${path}`;
 const websocketUrl = `${serverOrigin.replace(/^http/, 'ws')}/ws`;
+const roomSessionStore = createRoomSessionStore(serverOrigin);
+const savedRoomSession = roomSessionStore.read(inviteCode);
+if (savedRoomSession?.mode === 'friends') inviteCode ||= savedRoomSession.code;
 const voiceEnvironment = getVoiceEnvironment();
 const externalBrowser = 'Safari 또는 Chrome';
 const browserHelp = id => voiceEnvironment.instagram ? `<div class="browser-help"><p>인스타그램에서는 음성 인식이 제한될 수 있어요. 주소를 복사해 <b>${externalBrowser} 앱</b>에서 열어주세요.</p><input id="${id}-value" class="browser-url" aria-label="${externalBrowser}에서 열 주소" value="${escape(location.href)}" readonly/><button id="${id}" class="button secondary full-width">${icon('link')} 주소 복사</button></div>` : '';
@@ -49,7 +53,10 @@ function syncMusic(retry = false) {
 }
 let timeOffset = 0, lastSuggestion = '', lastLobbySignature = '', confirmedName = '';
 let nameValidationRevision = 0, nameValidationController = null, reservationToken = null;
-let myRoomCode = null, resumeToken = null, resuming = false, reconnectAttempts = 0, reconnectTimer = null;
+let myRoomCode = savedRoomSession?.code || null, resumeToken = savedRoomSession?.resumeToken || null;
+myId = savedRoomSession?.playerId || null;
+let resuming = false, reconnectAttempts = 0, reconnectTimer = null, resumeAckTimer = null;
+let connectPromise = null, reconnectGeneration = 0, pageSuspended = false;
 const randomAppearance = () => crypto.getRandomValues(new Uint32Array(1))[0] % 8;
 let currentAppearance = randomAppearance();
 
@@ -259,43 +266,79 @@ function setPortrait(appearanceIndex = 0) {
 }
 async function connect() {
   if (ws?.readyState === WebSocket.OPEN) return;
-  await new Promise((resolve, reject) => {
+  if (connectPromise) return connectPromise;
+  const pending = new Promise((resolve, reject) => {
     const socket = ws = new WebSocket(websocketUrl);
     const timeout = setTimeout(() => { socket.close(); reject(new Error('서버에 연결하지 못했어요. 다시 시도해주세요.')); }, 8000);
     socket.onopen = () => { clearTimeout(timeout); resolve(); };
     socket.onerror = () => { clearTimeout(timeout); reject(new Error('경주 서버에 연결하지 못했어요. 서버 실행 상태를 확인해주세요.')); };
-    socket.onmessage = event => receive(JSON.parse(event.data));
-    socket.onclose = () => {
+    socket.onmessage = event => { if (ws === socket) receive(JSON.parse(event.data)); };
+    socket.onclose = event => {
       clearTimeout(timeout);
+      reject(new Error('서버 연결이 끊겼어요.'));
       if (ws !== socket) return;
-      if (room && myRoomCode && resumeToken) {
+      connectPromise = null;
+      clearTimeout(resumeAckTimer); resuming = false;
+      if (event.code === 4001) { resetHome(); toast('다른 페이지에서 대기실을 이어서 열었어요.'); return; }
+      if (myRoomCode && resumeToken) {
         if ($('lobby-dialog').open) lobbyError('연결이 끊겼어요. 재연결 시도 중…');
-        reconnectAttempts = 0;
-        attemptReconnect();
+        scheduleReconnect();
       } else if (room) { resetHome(); toast('서버 연결이 끊겼어요. 새 대기실을 만들어 다시 참여해주세요.'); }
     };
   });
+  connectPromise = pending;
+  try { await pending; }
+  finally { if (connectPromise === pending) connectPromise = null; }
+}
+function scheduleReconnect() {
+  clearTimeout(reconnectTimer);
+  if (!resumeToken || pageSuspended || document.hidden) return;
+  reconnectTimer = setTimeout(attemptReconnect, Math.min(1000 * 2 ** Math.min(reconnectAttempts, 3), 8000));
 }
 async function attemptReconnect() {
-  if (!resumeToken || !myRoomCode) return;
+  if (!resumeToken || !myRoomCode || resuming || pageSuspended || document.hidden) return;
+  const generation = reconnectGeneration;
   resuming = true;
+  reconnectAttempts++;
   try {
     await connect();
+    if (generation !== reconnectGeneration) return;
+    // OS suspension may have stopped microphone capture even when its old UI
+    // still looked ready. Recheck it explicitly after restoring the room.
+    voice.stop(); micReady = false; voiceBusy = false;
+    $('mic-title').textContent = '마이크를 다시 연결해주세요';
+    $('mic-description').textContent = '';
     send({ type: 'resume', code: myRoomCode, playerId: myId, resumeToken });
+    clearTimeout(resumeAckTimer);
+    resumeAckTimer = setTimeout(() => {
+      if (generation !== reconnectGeneration || !resuming) return;
+      restartConnection();
+    }, 8000);
   } catch {
-    reconnectAttempts++;
-    if (reconnectAttempts <= 6) reconnectTimer = setTimeout(attemptReconnect, Math.min(1000 * 2 ** reconnectAttempts, 8000));
-    else { resetHome(); toast('대기실에 다시 연결하지 못했어요. 새로고침해서 다시 시도해주세요.'); }
+    if (generation !== reconnectGeneration) return;
+    resuming = false;
+    scheduleReconnect();
   }
 }
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return;
-  if (room && myRoomCode && resumeToken && ws?.readyState !== WebSocket.OPEN && !resuming) {
-    clearTimeout(reconnectTimer);
-    reconnectAttempts = 0;
-    attemptReconnect();
-  }
-});
+function restartConnection() {
+  reconnectGeneration++;
+  clearTimeout(reconnectTimer); clearTimeout(resumeAckTimer);
+  resuming = false;
+  const old = ws; ws = null; connectPromise = null;
+  old?.close();
+  void attemptReconnect();
+}
+function restoreConnection() {
+  pageSuspended = false;
+  if (document.hidden || !resumeToken || !myRoomCode || resuming) return;
+  // OPEN can be stale after an app switch; a new authenticated connection also
+  // replaces a server-side socket whose heartbeat has not timed out yet.
+  reconnectAttempts = 0;
+  restartConnection();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) restoreConnection(); });
+window.addEventListener('pageshow', event => { if (event.persisted) restoreConnection(); });
+window.addEventListener('online', restoreConnection);
 async function openRoom(selectedMode, code) {
   if (!confirmedName || confirmedName !== $('horse-name').value) { $('confirm-name').focus(); return false; }
   if (openRoom.busy) return false;
@@ -312,14 +355,18 @@ async function openRoom(selectedMode, code) {
 }
 function receive(data) {
   if (data.type === 'reserved') {
-    myId = data.id; reservationToken = data.reservationToken;
+    resuming = false; clearTimeout(resumeAckTimer); clearTimeout(reconnectTimer); reconnectAttempts = 0;
+    myId = data.id; myRoomCode = data.code;
+    resumeToken = reservationToken = data.reservationToken;
+    roomSessionStore.write({ code: data.code, playerId: myId, resumeToken, mode: 'friends' });
     setPortrait(data.appearance);
     return;
   }
   if (data.type === 'joined') {
-    resuming = false; clearTimeout(reconnectTimer); reconnectAttempts = 0;
+    resuming = false; clearTimeout(resumeAckTimer); clearTimeout(reconnectTimer); reconnectAttempts = 0;
     myId = data.id; myRoomCode = data.code;
     if (data.resumeToken) resumeToken = data.resumeToken;
+    roomSessionStore.write({ code: myRoomCode, playerId: myId, resumeToken, mode: data.mode });
     if (data.name) {
       activeName = data.name;
       confirmedName = data.name;
@@ -406,10 +453,10 @@ function renderLobby() {
   $('connect-mic').disabled = voiceBusy;
   $('connect-mic').innerHTML = `${icon('mic')} ${voiceBusy ? '마이크 연결 중…' : '마이크 연결하기'}`;
   const url = new URL(location.href); url.search = ''; url.hash = ''; url.searchParams.set('room', room.code); $('invite-link').value = url.href;
-  const signature = JSON.stringify(room.players.map(p => [p.id, p.name, p.ready, p.lane]));
+  const signature = JSON.stringify([room.host, room.players.map(p => [p.id, p.name, p.ready, p.connected, p.lane])]);
   if (signature !== lastLobbySignature) {
     lastLobbySignature = signature;
-    $('lobby-players').innerHTML = room.players.filter(p => friends || !p.bot).map(p => `<div class="player-card"><span class="player-avatar"><img src="${horseAppearance(p.appearance).src}" alt="${horseAppearance(p.appearance).label}" draggable="false"/></span><span><b>${escape(p.name || '이름 짓는 중')} ${p.id === myId ? '<small>나</small>' : ''}</b><small>${p.id === room.host ? '방장' : '참가자'} · ${p.lane + 1}번</small></span><span class="player-ready ${p.connected && p.ready ? 'is-ready' : ''}">${p.reserved ? '이름 짓는 중' : p.ready ? '준비 완료 ✓' : '준비 중'}</span></div>`).join('');
+    $('lobby-players').innerHTML = room.players.filter(p => friends || !p.bot).map(p => `<div class="player-card"><span class="player-avatar"><img src="${horseAppearance(p.appearance).src}" alt="${horseAppearance(p.appearance).label}" draggable="false"/></span><span><b>${escape(p.name || '이름 짓는 중')} ${p.id === myId ? '<small>나</small>' : ''}</b><small>${p.id === room.host ? '방장' : '참가자'} · ${p.lane + 1}번</small></span><span class="player-ready ${p.connected && p.ready ? 'is-ready' : ''}">${!p.connected ? '재접속 대기 중' : p.reserved ? '이름 짓는 중' : p.ready ? '준비 완료 ✓' : '준비 중'}</span></div>`).join('');
   }
   show('start-race', !!me?.ready && host);
   $('start-race').disabled = !room.players.every(p => p.connected && p.ready) || (friends && room.players.filter(p => p.connected).length < 2);
@@ -484,11 +531,22 @@ function renderResult(sorted, me, rank) {
   $('replay').disabled = room.host !== myId || room.phase !== 'finished';
 }
 function resetHome() {
+  inviteCode = null;
+  history.replaceState(null, '', location.pathname);
+  $('invite-banner')?.remove();
+  $('home-view').querySelector('.play-actions').classList.remove('hidden');
+  $('home-view').querySelector('.paddock').classList.remove('awaiting-horse');
+  $('friends-button').setAttribute('aria-label', '친구와 달리기');
+  $('friends-button').querySelector('strong').textContent = '친구와 달리기';
+  $('confirm-name').textContent = '확인';
   $('help-dialog').close();
   $('home-view').classList.remove('lobby-open');
   $('home-view').style.removeProperty('min-height');
   voice.stop(); micReady = false; voiceBusy = false; localCalls = 0; room = null; myId = null; view = 'home'; lastLobbySignature = '';
   myRoomCode = null; resumeToken = null; resuming = false; clearTimeout(reconnectTimer);
+  reservationToken = null; roomSessionStore.clear(); clearTimeout(resumeAckTimer);
+  reconnectGeneration++;
+  const old = ws; ws = null; connectPromise = null; old?.close();
   syncMusic();
   $('lobby-dialog').close(); $('result-dialog').close(); show('race-view', false); show('home-view');
   scene?.setMode('home'); clearNameProgress(); lobbyError();
@@ -567,9 +625,17 @@ async function reserveInvite() {
     send({ type: 'reserve', code: inviteCode });
   } catch (error) { $('invite-banner').classList.add('invalid'); $('invite-banner').querySelector('span').textContent = error.message; }
 }
-reserveInvite();
+if (savedRoomSession) void attemptReconnect();
+else reserveInvite();
 window.addEventListener('resize', updateLobbyPageHeight);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && (sound || voice.active)) void audio.resume();
 });
-window.addEventListener('pagehide', () => { voice.stop(); audio.dispose(); ws?.close(); });
+window.addEventListener('pagehide', () => {
+  pageSuspended = true;
+  reconnectGeneration++; resuming = false;
+  clearTimeout(reconnectTimer); clearTimeout(resumeAckTimer);
+  voice.stop(); micReady = false;
+  // BFCache restoration reuses this audio manager, so do not dispose it here.
+  ws?.close();
+});
