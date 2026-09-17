@@ -11,6 +11,12 @@ test('rejects length, whitespace, latin, numbers, jamo and punctuation', () => {
 test('semantic decisions are deferred to the server, without a local denylist', () => {
   for (const name of ['유재석질주', '삼성전자', '하하하하']) assert.equal(validateName(name).ok, true);
 });
+test('rejects "네" immediately followed by a common noun, likely to be misheard as "의"', () => {
+  for (const name of ['지수네말', '우리집앞네집', '준서네나무']) assert.equal(validateName(name).ok, false, name);
+});
+test('allows "네" when it is not followed by a recognized noun, or is the first syllable', () => {
+  for (const name of ['네잎클로버', '지수네달려', '바람둥이네']) assert.equal(validateName(name).ok, true, name);
+});
 test('silence has minimum speed; 4 repeats in two seconds have maximum speed', () => {
   assert.equal(speedForCalls([], 10000), MIN_SPEED);
   assert.equal(speedForCalls([9950], 10000), 8.75);

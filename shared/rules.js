@@ -1,5 +1,11 @@
 // Only structural checks run locally. Semantic moderation is server-side.
 export const suggestions = ['바람을따라','우당탕질주','구름콩콩이','당근이좋아','새벽콩콩이','천둥발굽','달빛을달려'];
+// Names like "지수네말" are often misheard by speech recognition as "지수의
+// 말" (formal possessive), because that reading is grammatical Korean and
+// "-네 + common noun" is not. Block that structural pattern so registered
+// names stay recognizable — this is about recognizability, not semantic
+// moderation, so it doesn't overlap with the server-side denylist-free check.
+const NOUNS_AFTER_NE = ['말','집','밥','옷','손','발','눈','코','입','몸','맘','꿈','길','물','불','돈','땅','산','강','바다','하늘','구름','바람','소리','노래','이름','사랑','친구','가족','마음','나라','세상','인생','생각','얼굴','머리','다리','나무','오늘','내일','어제','아침','저녁'];
 export function validateName(name) {
   if (typeof name !== 'string' || !name) return { ok: false, message: '말 이름을 입력해주세요.' };
   if (/\s/.test(name)) return { ok: false, message: '띄어쓰기는 사용할 수 없습니다.' };
@@ -8,6 +14,11 @@ export function validateName(name) {
   if (/[ㄱ-ㅣ\u1100-\u11ff\ua960-\ua97f\ud7b0-\ud7ff]/.test(name)) return { ok: false, message: '자음·모음만 사용할 수 없습니다. 완성된 한글로 입력해주세요.' };
   if (!/^[가-힣]+$/.test(name)) return { ok: false, message: '한글 외 문자와 기호는 사용할 수 없습니다.' };
   if (name.length < 4 || name.length > 6) return { ok: false, message: '말 이름은 4~6글자로 입력해주세요.' };
+  for (let index = 1; index < name.length; index++) {
+    if (name[index] === '네' && NOUNS_AFTER_NE.includes(name.slice(index + 1))) {
+      return { ok: false, message: '"네" 뒤에 흔한 명사가 오면 음성 인식이 "의"로 잘못 알아들을 수 있어요. 다른 이름을 입력해주세요.' };
+    }
+  }
   return { ok: true, message: '이름 형식이 확인되었습니다.' };
 }
 export const RACE_DISTANCE = 200;
