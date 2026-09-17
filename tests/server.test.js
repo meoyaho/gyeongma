@@ -58,7 +58,7 @@ test('friends room supports 8, keeps a dropped seat during the reconnect grace w
   assert.ok(joined.resumeToken, 'a resume token lets the player reclaim its seat after a network drop');
   const lobby = await host.wait(d => d.type === 'state');
   assert.equal(lobby.players.find(p => p.id === joined.id).appearance, 3, 'friends room keeps the preview horse');
-  const names = ['우당탕질주','구름콩콩이','당근이좋아','새벽콩콩이','천둥발굽','달빛을달려','초원의질주','들판을가르며'];
+  const names = ['말이되냐','말로하자','울트라걸','내가간다','장난아냐','당근좋아','바람난다','말이되냐'];
   const invite = await fetch(`${origin}/api/invite/${joined.code}`).then(response => response.json());
   assert.equal(invite.ok, true);
   assert.equal(invite.room.playerCount, 1);

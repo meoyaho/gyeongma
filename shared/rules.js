@@ -1,5 +1,5 @@
 // Only structural checks run locally. Semantic moderation is server-side.
-export const suggestions = ['바람을따라','우당탕질주','구름콩콩이','당근이좋아','새벽콩콩이','천둥발굽','달빛을달려'];
+export const suggestions = ['말이되냐','말로하자','울트라걸','내가간다','장난아냐','당근좋아','바람난다'];
 // Names like "지수네말" are often misheard by speech recognition as "지수의
 // 말" (formal possessive), because that reading is grammatical Korean and
 // "-네 + common noun" is not. Block that structural pattern so registered
