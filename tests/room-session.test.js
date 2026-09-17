@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LOBBY_GRACE_MS, resumeHash, disconnectPlayer, resumePlayer, expiredLobbyPlayers } from '../server/room-session.js';
+import { LOBBY_GRACE_MS, RESERVED_GRACE_MS, resumeHash, disconnectPlayer, resumePlayer, expiredLobbyPlayers } from '../server/room-session.js';
 import { createRoomSessionStore } from '../src/room-session.js';
 
 function fixture() {
@@ -64,6 +64,15 @@ test('a reserved seat resumes without turning into a named player', () => {
   const resumed = resumePlayer(room, {}, credentials, 2000);
   assert.equal(resumed.reserved, true);
   assert.equal(resumed.name, '');
+});
+test('an abandoned reserved seat (e.g. a different browser reopening the invite link) expires in 15s, not 5 minutes', () => {
+  const { room, p, socket, credentials } = fixture();
+  p.reserved = true; p.name = '';
+  disconnectPlayer(room, socket, 0);
+  assert.equal(RESERVED_GRACE_MS, 15000);
+  assert.deepEqual(expiredLobbyPlayers(room, RESERVED_GRACE_MS - 1), []);
+  assert.deepEqual(expiredLobbyPlayers(room, RESERVED_GRACE_MS), [p]);
+  assert.equal(resumePlayer(room, {}, credentials, RESERVED_GRACE_MS), null);
 });
 test('race disconnect still transfers host and is not treated as a lobby expiry', () => {
   const { room, socket } = fixture();
