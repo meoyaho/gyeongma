@@ -495,16 +495,23 @@ function startView() {
   view = 'race'; $('lobby-dialog').close(); show('home-view', false); show('race-view');
   if (!scene) scene = new RaceScene($('race-scene'));
   $('mic-transcript').textContent = ''; localCalls = 0; clearNameProgress();
+  // Starting without every guest ready means some players reach the race view
+  // having never connected a mic. Voice input is unusable for them (nothing
+  // requested the permission), so fall back to a guaranteed-working keyboard
+  // experience instead of stranding them on a silent "connect your mic" screen.
+  if (!micReady) {
+    inputMode = 'keyboard';
+    if (!activeName) {
+      const taken = new Set(room.players.map(p => p.name));
+      activeName = suggestions.find(name => !taken.has(name)) || suggestions[0];
+    }
+  }
   scene.setMode('race', room.players, myId); scene.update(room);
   $('race-horse-name').textContent = activeName; $('shout-name').innerHTML = [...activeName].map(char => `<span class="name-syllable" aria-hidden="true">${escape(char)}</span>`).join(''); $('shout-name').setAttribute('aria-label', activeName);
-  $('input-status').innerHTML = inputMode === 'keyboard' ? `${icon('keyboard')} 이름을 따라 써주세요`
-    : micReady ? `${icon('mic')} 이름을 불러주세요` : `${icon('mic')} 마이크를 연결해주세요`;
+  $('input-status').innerHTML = `${icon(inputMode === 'keyboard' ? 'keyboard' : 'mic')} ${inputMode === 'keyboard' ? '이름을 따라 써주세요' : '이름을 불러주세요'}`;
   const keyboardInput = $('keyboard-name-input');
   keyboardInput.value = ''; keyboardInput.maxLength = activeName.length; keyboardInput.disabled = room.phase !== 'racing'; keyboardInput.placeholder = room.phase === 'racing' ? activeName : '출발 대기'; keyboardCallLocked = false; keyboardComposing = false;
-  // Starting without every guest ready means some players reach the race view
-  // having never connected a mic (prepareVoice was never called for them).
-  // Surface the same reconnect affordance an error would, so they can still join in.
-  show('keyboard-name-input', inputMode === 'keyboard'); show('voice-meter-caption', inputMode === 'voice' && micReady); show('reconnect-mic', inputMode === 'voice' && !micReady);
+  show('keyboard-name-input', inputMode === 'keyboard'); show('voice-meter-caption', inputMode === 'voice'); show('reconnect-mic', false);
   if (inputMode === 'keyboard') requestAnimationFrame(() => keyboardInput.focus());
   $('transcript').textContent = '';
   show('countdown'); $('countdown-number').textContent = '3';
