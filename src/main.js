@@ -384,7 +384,17 @@ function receive(data) {
   if (data.type === 'error') {
     if (resuming) { resetHome(); toast(data.message); }
     else if ($('lobby-dialog').open) lobbyError(data.message);
-    else if (inviteCode) {
+    else if (inviteCode && !room && !reservationToken) {
+      inviteCode = null;
+      history.replaceState(null, '', location.pathname);
+      $('invite-banner')?.remove();
+      $('home-view').querySelector('.paddock').classList.remove('awaiting-horse');
+      $('home-view').querySelector('.play-actions').classList.remove('hidden');
+      $('friends-button').setAttribute('aria-label', '친구와 달리기');
+      $('friends-button').querySelector('strong').textContent = '친구와 달리기';
+      updateName();
+      toast(data.message);
+    } else if (inviteCode && reservationToken) {
       confirmedName = '';
       $('solo-button').disabled = $('friends-button').disabled = true;
       $('confirm-name').disabled = false;
@@ -489,7 +499,13 @@ function startView() {
   // having never connected a mic. Voice input is unusable for them (nothing
   // requested the permission), so fall back to a guaranteed-working keyboard
   // experience instead of stranding them on a silent "connect your mic" screen.
-  if (!micReady) inputMode = 'keyboard';
+  if (!micReady) {
+    inputMode = 'keyboard';
+    if (!activeName) {
+      const taken = new Set(room.players.map(p => p.name));
+      activeName = suggestions.find(name => !taken.has(name)) || suggestions[0];
+    }
+  }
   scene.setMode('race', room.players, myId); scene.update(room);
   $('race-horse-name').textContent = activeName; $('shout-name').innerHTML = [...activeName].map(char => `<span class="name-syllable" aria-hidden="true">${escape(char)}</span>`).join(''); $('shout-name').setAttribute('aria-label', activeName);
   $('input-status').innerHTML = `${icon(inputMode === 'keyboard' ? 'keyboard' : 'mic')} ${inputMode === 'keyboard' ? '이름을 따라 써주세요' : '이름을 불러주세요'}`;
@@ -614,39 +630,15 @@ function frame() {
   requestAnimationFrame(frame);
 }
 frame();
-// Merely opening an invite link (e.g. glancing at it from a chat app before
-// switching browsers) must never occupy a room seat — only submitting a name
-// does, via the same one-step 'join' used for typing a room code directly.
-// This is a read-only lookup, so a person who opens and leaves without
-// naming their horse never shows up as a "이름 짓는 중" ghost for the host.
-async function checkInvitePreview() {
+async function reserveInvite() {
   if (!inviteCode) return;
-  let response;
   try {
-    response = await fetch(apiUrl(`/api/invite/${inviteCode}`));
-  } catch {
-    $('invite-banner').classList.add('invalid');
-    $('invite-banner').querySelector('span').textContent = '초대방을 확인하지 못했어요. 잠시 후 다시 시도해주세요.';
-    return;
-  }
-  const data = await response.json();
-  if (data.ok) {
-    $('invite-banner').classList.remove('invalid');
-    $('invite-banner').querySelector('span').textContent = `${data.room.playerCount}/${data.room.capacity}명 참가`;
-    return;
-  }
-  inviteCode = null;
-  history.replaceState(null, '', location.pathname);
-  $('invite-banner')?.remove();
-  $('home-view').querySelector('.paddock').classList.remove('awaiting-horse');
-  $('home-view').querySelector('.play-actions').classList.remove('hidden');
-  $('friends-button').setAttribute('aria-label', '친구와 달리기');
-  $('friends-button').querySelector('strong').textContent = '친구와 달리기';
-  updateName();
-  toast(data.message || '초대방을 확인하지 못했어요.');
+    await connect();
+    send({ type: 'reserve', code: inviteCode });
+  } catch (error) { $('invite-banner').classList.add('invalid'); $('invite-banner').querySelector('span').textContent = error.message; }
 }
 if (savedRoomSession) void attemptReconnect();
-else void checkInvitePreview();
+else reserveInvite();
 window.addEventListener('resize', updateLobbyPageHeight);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && (sound || voice.active)) void audio.resume();
