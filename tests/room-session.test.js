@@ -61,15 +61,15 @@ test('a reserved seat resumes without turning into a named player', () => {
   const { room, p, socket, credentials } = fixture();
   p.reserved = true; p.name = '';
   disconnectPlayer(room, socket, 0);
-  const resumed = resumePlayer(room, {}, credentials, 2000);
+  const resumed = resumePlayer(room, {}, credentials, 500);
   assert.equal(resumed.reserved, true);
   assert.equal(resumed.name, '');
 });
-test('an abandoned reserved seat (e.g. a different browser reopening the invite link) expires in 15s, not 5 minutes', () => {
+test('an abandoned reserved seat (e.g. a different browser reopening the invite link) expires in 2s, not 5 minutes', () => {
   const { room, p, socket, credentials } = fixture();
   p.reserved = true; p.name = '';
   disconnectPlayer(room, socket, 0);
-  assert.equal(RESERVED_GRACE_MS, 15000);
+  assert.equal(RESERVED_GRACE_MS, 2000);
   assert.deepEqual(expiredLobbyPlayers(room, RESERVED_GRACE_MS - 1), []);
   assert.deepEqual(expiredLobbyPlayers(room, RESERVED_GRACE_MS), [p]);
   assert.equal(resumePlayer(room, {}, credentials, RESERVED_GRACE_MS), null);

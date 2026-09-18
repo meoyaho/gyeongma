@@ -3,10 +3,12 @@ import { createHash } from 'node:crypto';
 export const LOBBY_GRACE_MS = 5 * 60_000;
 // A reserved seat has no name yet, so a different browser opening the same
 // invite link (e.g. closing a KakaoTalk in-app browser and reopening in
-// Safari) can't resume it — it just reserves a second seat instead. Keeping
-// the abandoned one around for the full 5 minutes then blocks "start" on a
-// phantom, disconnected seat, so it gets a much shorter grace window.
-export const RESERVED_GRACE_MS = 15_000;
+// Safari) can't resume it — it just reserves a second seat instead. The host
+// should see that "이름 짓는 중" seat disappear as soon as that person
+// actually leaves (a real ws close, not a guess), not linger and block
+// "start" on a phantom. A couple of seconds still covers a same-browser
+// page reload's round trip back to 'resume'.
+export const RESERVED_GRACE_MS = 2_000;
 export function resumeHash(token) {
   return createHash('sha256').update(String(token || '')).digest('hex');
 }
