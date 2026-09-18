@@ -75,14 +75,16 @@ test('friends room supports 8, keeps a dropped seat during the reconnect grace w
   assert.equal(available.ok, true);
   assert.equal(available.room.nextLane, 1);
   // One-player friend races cannot start.
-  host.send({ type: 'ready', ready: true }); host.send({ type: 'start' }); assert.match((await host.wait(d => d.type === 'error')).message, /한 명/);
+  host.send({ type: 'start' }); assert.match((await host.wait(d => d.type === 'error')).message, /한 명/);
   for (let i = 0; i < 7; i++) { guests[i].send({ type: 'join', code: joined.code, name: names[i] }); await guests[i].wait(d => d.type === 'joined'); }
   const full = await host.wait(d => d.type === 'state' && d.players.length === 8); assert.equal(full.players.filter(p => p.bot).length, 0);
   assert.equal(full.players.some(p => p.resumeHash || p.reservationToken || p.resumeToken), false, 'reservation credentials are private');
   assert.equal(new Set(full.players.map(p => horseAppearance(p.appearance).src)).size, 8, 'all players receive distinct horse illustrations');
   guests[7].send({ type: 'join', code: joined.code, name: names[7] }); assert.match((await guests[7].wait(d => d.type === 'error')).message, /8명/);
   guests[0].send({ type: 'start' }); assert.match((await guests[0].wait(d => d.type === 'error')).message, /방장/);
+  // The host itself must still be ready, but a stuck/erroring guest never blocks the room.
   host.clear(); host.send({ type: 'start' }); assert.match((await host.wait(d => d.type === 'error')).message, /준비/);
+  host.send({ type: 'ready', ready: true });
   // Dropping the connection (e.g. backgrounding the tab to share the invite link) must not
   // vacate the seat or transfer the host role while the grace window is open.
   host.socket.close();
@@ -98,10 +100,10 @@ test('friends room supports 8, keeps a dropped seat during the reconnect grace w
   const afterResume = await resumed.wait(d => d.type === 'state' && d.players.find(p => p.id === joined.id)?.connected);
   assert.equal(afterResume.players.length, 8, 'resuming reclaims the existing seat instead of creating a duplicate');
   assert.equal(afterResume.host, joined.id, 'the returning host retains its role');
+  // The resumed connection needs a fresh 'ready' (resume clears it); guests never ready up here at all.
   const leader = resumed;
   leader.send({ type: 'ready', ready: true });
-  for (const guest of guests.slice(0, 7)) guest.send({ type: 'ready', ready: true });
-  await leader.wait(d => d.phase === 'lobby' && d.players.length === 8 && d.players.every(p => p.ready));
+  await leader.wait(d => d.phase === 'lobby' && d.players.length === 8 && d.players.find(p => p.id === joined.id)?.ready);
   leader.send({ type: 'start' });
   const starts = await Promise.all(guests.slice(0, 7).map(c => c.wait(d => d.phase === 'countdown')));
   assert.equal(new Set(starts.map(d => d.startAt)).size, 1);

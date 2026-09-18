@@ -271,7 +271,10 @@ wss.on('connection', (ws, req) => {
         if (room.host !== p.id) return fail('방장만 경주를 시작할 수 있어요.');
         if (room.phase !== 'lobby') return;
         if (room.mode === 'friends' && room.players.filter(p => p.connected).length < 2) return fail('친구가 한 명 이상 입장해야 시작할 수 있어요.');
-        if (!room.players.every(p => p.connected && p.ready)) return fail('모든 참가자가 접속하고 준비를 마쳐야 해요.');
+        if (!p.ready) return fail('마이크를 연결하고 준비를 마쳐야 시작할 수 있어요.');
+        // Other players need not be ready: one stuck naming/mic error must not
+        // block everyone else from racing. They simply sit at minimum speed
+        // until they call their name, same as anyone who stays silent.
         room.phase = 'countdown'; room.startAt = Date.now() + 3500; room.lastTick = room.startAt; broadcast(room);
         if (room.mode === 'friends') removePersisted(room.code);
       }

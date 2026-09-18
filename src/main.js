@@ -459,8 +459,8 @@ function renderLobby() {
     $('lobby-players').innerHTML = room.players.filter(p => friends || !p.bot).map(p => `<div class="player-card"><span class="player-avatar"><img src="${horseAppearance(p.appearance).src}" alt="${horseAppearance(p.appearance).label}" draggable="false"/></span><span><b>${escape(p.name || '이름 짓는 중')} ${p.id === myId ? '<small>나</small>' : ''}</b><small>${p.id === room.host ? '방장' : '참가자'} · ${p.lane + 1}번</small></span><span class="player-ready ${p.connected && p.ready ? 'is-ready' : ''}">${!p.connected ? '재접속 대기 중' : p.reserved ? '이름 짓는 중' : p.ready ? '준비 완료 ✓' : '준비 중'}</span></div>`).join('');
   }
   show('start-race', !!me?.ready && host);
-  $('start-race').disabled = !room.players.every(p => p.connected && p.ready) || (friends && room.players.filter(p => p.connected).length < 2);
-  $('lobby-wait').textContent = me?.ready ? host ? friends && room.players.filter(p => p.connected).length < 2 ? '2명 이상 참가 시 시작 가능' : !room.players.every(p => p.connected && p.ready) ? '다른 참가자 접속 또는 준비 대기 중' : '' : '방장 시작 대기' : '';
+  $('start-race').disabled = friends && room.players.filter(p => p.connected).length < 2;
+  $('lobby-wait').textContent = me?.ready ? host ? friends && room.players.filter(p => p.connected).length < 2 ? '2명 이상 참가 시 시작 가능' : '' : '방장 시작 대기' : '';
   requestAnimationFrame(updateLobbyPageHeight);
 }
 async function prepareVoice() {
