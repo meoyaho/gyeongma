@@ -133,8 +133,13 @@ dialog::backdrop { background: #254f4660; backdrop-filter: blur(9px); }
 .help-note p + p { margin-top: 10px; }
 .modal-scroll>p:not(.privacy-note):not(.lobby-wait), .privacy-note, .lobby-wait, .mic-test p, .player-card small, .player-ready, .result-stats span, .result-row>span, .result-row>span:last-child, .result-row small { color: var(--muted); }
 .player-ready.is-ready { color: #3c8a70; }
+.player-ready { display: flex; align-items: center; gap: 6px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: #b0b0b0; flex-shrink: 0; }
+.status-dot.is-connected { background: #3c8a70; }
 .player-avatar { position: relative; background: transparent !important; width: 52px; height: 52px; flex-shrink: 0; border-radius: 0; }
 .player-avatar img { width: 100%; height: 100%; object-fit: contain; }
+.kick-button { margin-left: 10px; padding: 0; border: 0; background: none; font-size: 11px; color: var(--muted); text-decoration: underline; cursor: pointer; flex-shrink: 0; }
+.kick-button:hover { color: #c3341b; }
 .mic-test { border-radius: 16px; background: #d8eae15c; border: 1px solid #fff9; }
 .mic-test-icon { color: #568e7a; }
 .mic-meter { background: #bed7cc; border-radius: 9px; overflow: hidden; }

@@ -456,7 +456,7 @@ function renderLobby() {
   const signature = JSON.stringify([room.host, room.players.map(p => [p.id, p.name, p.ready, p.connected, p.lane])]);
   if (signature !== lastLobbySignature) {
     lastLobbySignature = signature;
-    $('lobby-players').innerHTML = room.players.filter(p => friends || !p.bot).map(p => `<div class="player-card"><span class="player-avatar"><img src="${horseAppearance(p.appearance).src}" alt="${horseAppearance(p.appearance).label}" draggable="false"/></span><span><b>${escape(p.name || '이름 짓는 중')} ${p.id === myId ? '<small>나</small>' : ''}</b><small>${p.id === room.host ? '방장' : '참가자'} · ${p.lane + 1}번</small></span><span class="player-ready ${p.connected && p.ready ? 'is-ready' : ''}">${!p.connected ? '재접속 대기 중' : p.reserved ? '이름 짓는 중' : p.ready ? '준비 완료 ✓' : '준비 중'}</span></div>`).join('');
+    $('lobby-players').innerHTML = room.players.filter(p => friends || !p.bot).map(p => `<div class="player-card"><span class="player-avatar"><img src="${horseAppearance(p.appearance).src}" alt="${horseAppearance(p.appearance).label}" draggable="false"/></span><span><b>${escape(p.name || '이름 짓는 중')} ${p.id === myId ? '<small>나</small>' : ''}</b><small>${p.id === room.host ? '방장' : '참가자'} · ${p.lane + 1}번</small></span><span class="player-ready ${p.connected && p.ready ? 'is-ready' : ''}"><i class="status-dot ${p.connected ? 'is-connected' : ''}" aria-label="${p.connected ? '접속중' : '연결 끊김'}"></i>${p.connected ? (p.reserved ? '이름 짓는 중' : p.ready ? '준비 완료 ✓' : '준비 중') : ''}</span>${host && friends && !p.bot && !p.reserved && p.id !== myId ? `<button class="kick-button" type="button" data-player-id="${p.id}">내보내기</button>` : ''}</div>`).join('');
   }
   show('start-race', !!me?.ready && host);
   $('start-race').disabled = friends && room.players.filter(p => p.connected).length < 2;
@@ -487,6 +487,10 @@ for (const id of ['copy-browser-url', 'copy-lobby-browser-url']) {
 $('connect-mic').onclick = prepareVoice; $('reconnect-mic').onclick = prepareVoice;
 $('practice-button').onclick = () => { voice.stop(); inputMode = 'keyboard'; micReady = false; lobbyError(); $('mic-title').textContent = '키보드 체험 모드'; $('mic-description').textContent = `“${activeName}”을 정확히 입력할 때마다 빨라집니다.`; $('mic-transcript').textContent = ''; send({ type: 'ready', ready: true }); };
 $('start-race').onclick = () => { send({ type: 'start' }); lobbyError(); };
+$('lobby-players').onclick = event => {
+  const button = event.target.closest('.kick-button');
+  if (button) send({ type: 'kick', playerId: button.dataset.playerId });
+};
 $('copy-link').onclick = async () => { try { await navigator.clipboard.writeText($('invite-link').value); $('copy-link').textContent = '복사 완료 ✓'; setTimeout(() => { $('copy-link').innerHTML = `${icon('link')} 복사`; }, 2000); } catch { $('invite-link').select(); toast('링크를 선택했어요. 복사해서 친구에게 보내주세요.'); } };
 function startView() {
   $('help-dialog').close();

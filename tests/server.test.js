@@ -113,3 +113,28 @@ test('server rejects malformed names and missing invite rooms', async t => {
   c.send({ type: 'create', name: 'ㄱㄴㄷㄹ' }); assert.match((await c.wait(d => d.type === 'error')).message, /한글/);
   c.clear(); c.send({ type: 'join', name: '바람을따라', code: 'NOPE' }); assert.match((await c.wait(d => d.type === 'error')).message, /찾을 수/);
 });
+test('only the host can kick a named participant, and the kicked seat is freed', async t => {
+  const host = client(), guest = client(), bystander = client();
+  t.after(() => [host, guest, bystander].forEach(c => c.socket.close()));
+  await Promise.all([host.ready, guest.ready, bystander.ready]);
+  host.send({ type: 'create', mode: 'friends', name: '바람을따라' });
+  const joined = await host.wait(d => d.type === 'joined');
+  guest.send({ type: 'join', code: joined.code, name: '우당탕질주' });
+  const guestJoined = await guest.wait(d => d.type === 'joined');
+  await host.wait(d => d.type === 'state' && d.players.length === 2);
+
+  guest.send({ type: 'kick', playerId: joined.id });
+  assert.match((await guest.wait(d => d.type === 'error')).message, /방장만/);
+
+  bystander.send({ type: 'reserve', code: joined.code });
+  const reserved = await bystander.wait(d => d.type === 'reserved');
+  host.clear();
+  host.send({ type: 'kick', playerId: reserved.id });
+  await new Promise(resolve => setTimeout(resolve, 200));
+  assert.equal(host.messages.some(d => d.type === 'state' && d.players.length === 2), false, 'an unnamed reserved seat cannot be kicked');
+
+  guest.clear();
+  host.send({ type: 'kick', playerId: guestJoined.id });
+  assert.match((await guest.wait(d => d.type === 'error')).message, /내보냈어요/);
+  await host.wait(d => d.type === 'state' && d.players.length === 2 && !d.players.some(p => p.id === guestJoined.id));
+});

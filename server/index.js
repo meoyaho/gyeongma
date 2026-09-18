@@ -261,6 +261,14 @@ wss.on('connection', (ws, req) => {
       const p = room.players.find(p => p.id === ws.playerId);
       if (!p) return;
       if (msg.type === 'ready' && room.phase === 'lobby') { p.ready = msg.ready === true; persist(room); broadcast(room); }
+      if (msg.type === 'kick' && room.phase === 'lobby') {
+        if (room.host !== p.id) return fail('방장만 내보낼 수 있어요.');
+        const target = room.players.find(player => player.id === msg.playerId);
+        if (!target || target.bot || target.id === p.id || target.reserved) return;
+        send(target.ws, { type: 'error', code: 'KICKED', message: '방장이 내보냈어요. 새 초대 링크로 다시 참여해주세요.' });
+        target.ws?.close();
+        removePlayer(room, target.id);
+      }
       if (msg.type === 'rematch' && room.phase === 'finished') {
         if (room.host !== p.id) return fail('방장이 다음 경주를 준비할 수 있어요.');
         room.players = room.players.filter(p => p.connected);
