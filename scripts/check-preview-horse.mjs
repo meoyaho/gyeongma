@@ -23,15 +23,15 @@ try {
 
   const guest = await browser.newPage();
   await guest.goto(await page.locator('#invite-link').inputValue());
-  await expect(guest.locator('#invite-banner')).toContainText('2/8명 참가', { timeout: 35000 });
-  const guestPreview = await guest.locator('#horse-portrait').getAttribute('src');
-  assert.notEqual(guestPreview, preview);
+  // Opening the link alone reserves nothing, so there is no distinct horse to show yet.
+  await expect(guest.locator('#invite-banner')).toContainText('1/8명 참가', { timeout: 35000 });
   await guest.getByRole('textbox', { name: '말 이름', exact: true }).fill('우당탕질주');
   await guest.getByRole('button', { name: '완료', exact: true }).click();
   await expect(guest.locator('#lobby-dialog')).toBeVisible({ timeout: 35000 });
-  await expect(guest.locator('#horse-portrait')).toHaveAttribute('src', guestPreview);
+  const guestPreview = await guest.locator('#horse-portrait').getAttribute('src');
+  assert.notEqual(guestPreview, preview);
   await expect(page.locator('#horse-portrait')).toHaveAttribute('src', preview);
-  console.log('PASS: invited guest keeps their reserved horse; host stays unchanged');
+  console.log('PASS: invited guest receives a distinct horse once joined; host stays unchanged');
   await guest.close();
 
   await page.goto(process.env.TEST_ORIGIN || 'http://localhost:3000');

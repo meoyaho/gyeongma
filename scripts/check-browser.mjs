@@ -95,9 +95,8 @@ await page.locator('#invite-link').waitFor();
 const invite = await page.locator('#invite-link').inputValue();
 const friend = await browser.newPage({ viewport: { width: 390, height: 844 } });
 await friend.goto(invite);
+// Opening the link alone reserves nothing, so there is no distinct horse yet.
 await expect(friend.locator('#invite-banner')).toContainText('1/8명 참가');
-await expect(friend.locator('#horse-portrait')).toHaveAttribute('src', '/horses/palomino.png');
-assert.notEqual(await page.locator('#horse-portrait').getAttribute('src'), await friend.locator('#horse-portrait').getAttribute('src'));
 await friend.getByRole('textbox', { name: '말 이름', exact: true }).fill('바람을따라');
 await friend.getByRole('button', { name: '완료', exact: true }).click();
 await expect(friend.locator('#name-feedback')).toContainText('같은 이름');
