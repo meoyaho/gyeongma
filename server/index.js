@@ -7,12 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
 import { RACE_DISTANCE, MIN_SPEED, speedForCalls } from '../shared/rules.js';
 import { checkName } from './name-check.js';
-import { saveRoom, deleteRoom } from './room-store.js';
+import { saveRoom, deleteRoom, pruneStaleRooms } from './room-store.js';
 import { getRankedAiHorseNames } from './kra-rankings.js';
 import { resumeHash, disconnectPlayer, resumePlayer, expiredLobbyPlayers } from './room-session.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const app = express();
+const MAX_ROOM_AGE_MS = 30 * 60 * 1000;
 const rooms = new Map();
 const roomWrites = new Map();
 const frontendOrigins = new Set((process.env.FRONTEND_ORIGINS || 'https://meoyaho.github.io').split(',').map(origin => origin.trim()).filter(Boolean));
@@ -301,7 +302,7 @@ wss.on('connection', (ws, req) => {
 const ticker = setInterval(() => {
   const now = Date.now();
   for (const room of rooms.values()) {
-    if (now - room.createdAt > 30 * 60 * 1000) { room.players.forEach(p => { send(p.ws, { type: 'expired' }); p.ws?.close(); }); rooms.delete(room.code); removePersisted(room.code); continue; }
+    if (now - room.createdAt > MAX_ROOM_AGE_MS) { room.players.forEach(p => { send(p.ws, { type: 'expired' }); p.ws?.close(); }); rooms.delete(room.code); removePersisted(room.code); continue; }
     if (room.phase === 'lobby') {
       const stale = expiredLobbyPlayers(room, now);
       if (stale.length) { stale.forEach(p => removePlayer(room, p.id)); if (!rooms.has(room.code)) continue; }
@@ -324,6 +325,11 @@ const ticker = setInterval(() => {
   }
 }, 50);
 const heartbeat = setInterval(() => { wss.clients.forEach(ws => { if (!ws.alive) return ws.terminate(); ws.alive = false; ws.ping(); }); }, 15000);
+// A crash or redeploy mid-lobby orphans that room's Firebase entry forever,
+// since no in-memory process is left to expire it. Sweep independently of
+// the rooms this process itself knows about, once now and periodically.
+void pruneStaleRooms(MAX_ROOM_AGE_MS);
+const roomPruner = setInterval(() => void pruneStaleRooms(MAX_ROOM_AGE_MS), MAX_ROOM_AGE_MS);
 
 if (process.argv.includes('--production')) {
   app.use(express.static(resolve(root, 'dist')));
@@ -335,5 +341,5 @@ if (process.argv.includes('--production')) {
 }
 const port = Number(process.env.PORT) || 3000;
 server.listen(port, '0.0.0.0', () => console.log(`말 달리자 → http://localhost:${port}`));
-function shutdown() { clearInterval(ticker); clearInterval(heartbeat); wss.clients.forEach(ws => ws.terminate()); server.close(() => process.exit(0)); }
+function shutdown() { clearInterval(ticker); clearInterval(heartbeat); clearInterval(roomPruner); wss.clients.forEach(ws => ws.terminate()); server.close(() => process.exit(0)); }
 process.on('SIGTERM', shutdown); process.on('SIGINT', shutdown);

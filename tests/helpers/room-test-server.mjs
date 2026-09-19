@@ -14,7 +14,7 @@ export async function startRoomTestServer() {
   const serverUrl = new URL('../../server/index.js', import.meta.url).href;
   const mocks = {
     './name-check.js': 'export async function checkName() { return { ok: true }; }',
-    './room-store.js': 'export async function saveRoom() {} export async function deleteRoom() {}',
+    './room-store.js': 'export async function saveRoom() {} export async function deleteRoom() {} export async function pruneStaleRooms() { return 0; }',
     './kra-rankings.js': 'export async function getRankedAiHorseNames() { return Array(7).fill("구름콩콩이"); }'
   };
   const loader = `export async function resolve(specifier, context, next) {
